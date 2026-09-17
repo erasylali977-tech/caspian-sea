@@ -11,6 +11,18 @@ const FISH_LENGTH = 1.15;
 const QUARTER_TURN = 0.28;
 const POSE_TAU = 0.22;
 
+// Extra zoom so a side-view drawing covers the fatter 3D body of each Meshy
+// file. Stripe/angel have tall fins; beak is already close to its drawing.
+const COVER_ZOOM = {
+  stripe: 1.22,
+  beak: 1.1,
+  goldfish: 1.16,
+  ornate: 1.18,
+  carp: 1.14,
+  carp2: 1.14,
+  angel: 1.2,
+};
+
 function pixelStats(data, i) {
   const max = Math.max(data[i], data[i + 1], data[i + 2]);
   const min = Math.min(data[i], data[i + 1], data[i + 2]);
@@ -19,26 +31,13 @@ function pixelStats(data, i) {
   return { luma, sat, a: data[i + 3] };
 }
 
-function isCrayon(data, i) {
-  const { luma, sat, a } = pixelStats(data, i);
-  return a >= 28 && sat > 0.16 && luma > 22 && luma < 248;
-}
-
-function isInk(data, i) {
-  const { luma, sat, a } = pixelStats(data, i);
-  if (a < 28) return false;
-  if (luma < 132) return true;
-  return sat > 0.14 && luma < 248;
-}
-
 function isPaper(data, i) {
-  return !isInk(data, i);
+  const { luma, sat, a } = pixelStats(data, i);
+  if (a < 32) return true;
+  return luma > 198 && sat < 0.2;
 }
 
-// JPEG cutouts keep a white rectangle around an oval fish. Those corners
-// map onto fins and snout of the 3D mesh, so the coloring looks like a
-// stamp. Fill only paper that touches the frame; keep a white belly.
-function floodPaintIntoPaper(data, w, h) {
+function markOutsidePaper(data, w, h) {
   const n = w * h;
   const outside = new Uint8Array(n);
   const stack = [];
@@ -64,17 +63,22 @@ function floodPaintIntoPaper(data, w, h) {
     if (y > 0) seed(i - w);
     if (y + 1 < h) seed(i + w);
   }
+  return outside;
+}
 
+function floodOutside(data, w, h) {
+  const outside = markOutsidePaper(data, w, h);
+  const n = w * h;
   const seen = new Uint8Array(n);
   const q = new Int32Array(n);
   let head = 0;
   let tail = 0;
   for (let i = 0; i < n; i++) {
-    if (isPaper(data, i * 4)) continue;
+    if (outside[i]) continue;
     seen[i] = 1;
     q[tail++] = i;
   }
-  if (!tail) return;
+  if (!tail) return outside;
   while (head < tail) {
     const i = q[head++];
     const x = i % w;
@@ -98,65 +102,61 @@ function floodPaintIntoPaper(data, w, h) {
       q[tail++] = ni;
     }
   }
+  return outside;
 }
 
-function boundsWhere(data, w, h, test) {
-  let minX = w;
-  let minY = h;
-  let maxX = 0;
-  let maxY = 0;
-  let n = 0;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4;
-      if (!test(data, i)) continue;
-      n += 1;
-      if (x < minX) minX = x;
-      if (y < minY) minY = y;
-      if (x > maxX) maxX = x;
-      if (y > maxY) maxY = y;
-    }
-  }
-  return n ? { minX, minY, maxX, maxY, n } : null;
-}
-
-function boostDrawing(img) {
+function cropToFish(img) {
   const src = document.createElement("canvas");
   src.width = Math.max(2, img.width);
   src.height = Math.max(2, img.height);
   const sctx = src.getContext("2d", { willReadFrequently: true });
-  sctx.filter = "saturate(1.6) contrast(1.12) brightness(1.03)";
+  sctx.filter = "saturate(1.45) contrast(1.08) brightness(1.02)";
   sctx.drawImage(img, 0, 0);
   sctx.filter = "none";
   const shot = sctx.getImageData(0, 0, src.width, src.height);
   const { data, width: w, height: h } = shot;
-
-  // Prefer the crayon itself. Grey JPEG paper used to count as "ink", so the
-  // crop stayed page-sized and only the nosy fish (tight PNG) filled the mesh.
-  const crayon = boundsWhere(data, w, h, isCrayon);
-  const ink = boundsWhere(data, w, h, isInk);
-  const box =
-    crayon && crayon.n > w * h * 0.012
-      ? crayon
-      : ink;
-  if (!box) {
-    floodPaintIntoPaper(data, w, h);
+  const outside = markOutsidePaper(data, w, h);
+  let minX = w;
+  let minY = h;
+  let maxX = 0;
+  let maxY = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (outside[i]) continue;
+    const x = i % w;
+    const y = (i / w) | 0;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  }
+  if (maxX <= minX || maxY <= minY) {
+    floodOutside(data, w, h);
     sctx.putImageData(shot, 0, 0);
     return src;
   }
-
-  const padX = Math.round(Math.max(1, (box.maxX - box.minX) * 0.04));
-  const padY = Math.round(Math.max(1, (box.maxY - box.minY) * 0.04));
-  const sx = Math.max(0, box.minX - padX);
-  const sy = Math.max(0, box.minY - padY);
-  const sw = Math.min(w - sx, box.maxX - box.minX + 1 + padX * 2);
-  const sh = Math.min(h - sy, box.maxY - box.minY + 1 + padY * 2);
-  const cropped = sctx.getImageData(sx, sy, sw, sh);
-  floodPaintIntoPaper(cropped.data, sw, sh);
+  const cropped = sctx.getImageData(minX, minY, maxX - minX + 1, maxY - minY + 1);
+  floodOutside(cropped.data, cropped.width, cropped.height);
   const c = document.createElement("canvas");
-  c.width = sw;
-  c.height = sh;
+  c.width = cropped.width;
+  c.height = cropped.height;
   c.getContext("2d").putImageData(cropped, 0, 0);
+  return c;
+}
+
+function coverOntoMesh(src, meshAspect, extraZoom) {
+  const W = 512;
+  const H = Math.max(2, Math.round(W / Math.max(meshAspect, 0.2)));
+  const c = document.createElement("canvas");
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  const scale = Math.max(W / src.width, H / src.height) * extraZoom;
+  const dw = src.width * scale;
+  const dh = src.height * scale;
+  ctx.drawImage(src, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  const shot = ctx.getImageData(0, 0, W, H);
+  floodOutside(shot.data, W, H);
+  ctx.putImageData(shot, 0, 0);
   return c;
 }
 
@@ -204,7 +204,7 @@ function meshAxes(child) {
 
 // Wrap the child's drawing around the model, projected straight onto the
 // flanks: along the body to the snout, up the body to the dorsal fin.
-function paintDrawingOnFish(aligned, drawingUrl, templateHeadOnRight) {
+function paintDrawingOnFish(aligned, drawingUrl, templateHeadOnRight, templateId) {
   if (!drawingUrl) {
     aligned.traverse((child) => {
       if (!child.isMesh) return;
@@ -221,7 +221,18 @@ function paintDrawingOnFish(aligned, drawingUrl, templateHeadOnRight) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const tex = new THREE.CanvasTexture(boostDrawing(img));
+      aligned.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(aligned);
+      const size = box.getSize(new THREE.Vector3());
+      const spanAlong = Math.max(size.x, 1e-5);
+      const spanUp = Math.max(size.y, 1e-5);
+      const minAlong = box.min.x;
+      const minUp = box.min.y;
+      const meshAspect = spanAlong / spanUp;
+      const extraZoom = COVER_ZOOM[templateId] || 1.14;
+      const sheet = coverOntoMesh(cropToFish(img), meshAspect, extraZoom);
+
+      const tex = new THREE.CanvasTexture(sheet);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.flipY = true;
       tex.anisotropy = 4;
@@ -232,37 +243,18 @@ function paintDrawingOnFish(aligned, drawingUrl, templateHeadOnRight) {
       tex.wrapT = THREE.ClampToEdgeWrapping;
       tex.needsUpdate = true;
 
-      // Which end of the drawing is the head? The template it was matched
-      // against knows, but trust the drawing itself when it is obvious - a
-      // photo taken with a mirroring front camera comes in back to front.
-      // Disc-shaped fish (angel, puffer) have no real caudal waist, and the
-      // silhouette hint then calls the snout a tail. Trust the template unless
-      // the drawing is clearly long and the waist is obvious.
       const hint = headSideHint(img);
       const aspect = img.width / Math.max(img.height, 1);
       const trustHint = aspect > 1.35 && hint !== 0;
       const headOnRight = trustHint ? hint > 0 : templateHeadOnRight;
 
-      aligned.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(aligned);
-      const size = box.getSize(new THREE.Vector3());
-      // After +90° Y the body is always X, the back is Y. Do not switch to Z
-      // on a thick fish — that mapped a sliver of the drawing onto the flank.
-      const spanAlong = Math.max(size.x, 1e-5);
-      const spanUp = Math.max(size.y, 1e-5);
-      const minAlong = box.min.x;
-      const minUp = box.min.y;
-      const zoom = 1.08;
-
       const v = new THREE.Vector3();
       aligned.traverse((child) => {
         if (!child.isMesh) return;
-        child.material = new THREE.MeshLambertMaterial({
+        child.geometry = child.geometry.clone();
+        child.material = new THREE.MeshBasicMaterial({
           map: tex,
-          color: 0xffffff,
           side: THREE.DoubleSide,
-          transparent: false,
-          depthWrite: true,
         });
         const geo = child.geometry;
         if (!geo?.attributes?.position) return;
@@ -274,11 +266,8 @@ function paintDrawingOnFish(aligned, drawingUrl, templateHeadOnRight) {
           v.fromBufferAttribute(pos, i).applyMatrix4(child.matrixWorld);
           let u = (v.x - minAlong) / spanAlong;
           if (!headOnRight) u = 1 - u;
-          let vv = (v.y - minUp) / spanUp;
-          u = 0.5 + (u - 0.5) / zoom;
-          vv = 0.5 + (vv - 0.5) / zoom;
           uv[i * 2] = Math.min(1, Math.max(0, u));
-          uv[i * 2 + 1] = Math.min(1, Math.max(0, vv));
+          uv[i * 2 + 1] = Math.min(1, Math.max(0, (v.y - minUp) / spanUp));
         }
         geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
       });
@@ -395,7 +384,12 @@ export class ThreeEngine {
           aligned.quaternion.copy(alignModel());
           aligned.updateMatrixWorld(true);
 
-          await paintDrawingOnFish(aligned, fishData.image, templateFacesRight(fishData.templateId));
+          await paintDrawingOnFish(
+            aligned,
+            fishData.image,
+            templateFacesRight(fishData.templateId),
+            fishData.templateId
+          );
 
           const swim = [];
           inner.traverse((child) => {
