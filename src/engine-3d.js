@@ -9,14 +9,7 @@ const FISH_LENGTH = 1.15;
 // How square-on the fish sits to the camera. A pure side view hides the tail
 // beat completely, because the tail sweeps straight into the screen.
 const QUARTER_TURN = 0.28;
-
-const FLIP_DEADZONE = 0.5;
-
-// How long the fish takes to show the other flank. Shortest-path 180° yaw
-// looks like a card flip; blending 0→1 over a couple of seconds turns
-// through the camera the way a real fish banks around.
-const TURN_TAU = 2.2;
-const ROLL_TAU = 0.22;
+const POSE_TAU = 0.16;
 
 function boostDrawing(img) {
   const c = document.createElement("canvas");
@@ -40,22 +33,16 @@ function easeAngle(from, to, dtSec, tau) {
   return from + wrapAngle(to - from) * k;
 }
 
-// Every Meshy export in /public/models is authored the same way: snout along
-// +Z (the tail is at min-Z, where the caudal fin is tallest), back along +Y,
-// thin flanks along X. Guessing this from bounding-box thickness flips the
-// odd fish (stripe's tail is bulkier than its head) and they swim backwards.
+// Meshy files are snout along -Z, back along +Y, thin flanks along X.
+// +90° around Y sends the snout to +X (screen-right). A -90° turn left
+// them swimming tail-first whenever the tank heading was "go right".
 const MODEL_ALIGN = new THREE.Quaternion().setFromAxisAngle(
   new THREE.Vector3(0, 1, 0),
-  -Math.PI / 2
+  Math.PI / 2
 );
-const NOSE_AT_MIN_Z = new Set(["stripe"]);
 
-function alignModel(templateId) {
-  const q = MODEL_ALIGN.clone();
-  if (NOSE_AT_MIN_Z.has(templateId)) {
-    q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI));
-  }
-  return q;
+function alignModel() {
+  return MODEL_ALIGN.clone();
 }
 
 // Everything below runs while the aligned group is still detached from the
@@ -236,13 +223,11 @@ export class ThreeEngine {
       loaded: false,
       failed: false,
       phase: Math.random() * Math.PI * 2,
-      facing: 1,
-      sideBlend: 0,
       yaw: 0,
-      roll: 0,
+      pitch: 0,
       bank: 0,
       posed: false,
-      lastHeading: null,
+      lastYaw: null,
     };
 
     this.loader.load(
@@ -259,7 +244,7 @@ export class ThreeEngine {
 
           const aligned = new THREE.Group();
           aligned.add(inner);
-          aligned.quaternion.copy(alignModel(fishData.templateId));
+          aligned.quaternion.copy(alignModel());
           aligned.updateMatrixWorld(true);
 
           await paintDrawingOnFish(aligned, fishData.image, templateFacesRight(fishData.templateId));
@@ -272,10 +257,9 @@ export class ThreeEngine {
           });
 
           const root = new THREE.Group();
-          // Yaw first (pick the flank), then roll in the screen plane, then
-          // bank around the snout. Three.js applies the letters in order, so
-          // this must be YZX — ZYX rolled them onto their noses when heading
-          // was not horizontal.
+          // Yaw around the tank's up axis, then pitch the snout in the screen
+          // plane. ZYX stood them on their tails; YZX keeps the belly down
+          // while the nose follows the swim direction.
           root.rotation.order = "YZX";
           root.add(aligned);
           this.scene.add(root);
@@ -298,7 +282,7 @@ export class ThreeEngine {
     return fish3D;
   }
 
-  updateFish(fish3D, x, y, heading, phase = 0, speed = 0.05, dt = 16) {
+  updateFish(fish3D, x, y, heading, phase = 0, speed = 0.05, dt = 16, swimYaw = null, pitch = null) {
     if (!fish3D?.loaded || !fish3D.root) return;
     const root = fish3D.root;
     const aspect = this.camera.right / this.camera.top;
@@ -306,38 +290,40 @@ export class ThreeEngine {
     root.position.y = -(y / this.viewH - 0.5) * 10;
     const dtSec = Math.min(0.05, Math.max(0.001, dt / 1000));
 
-    // The tank works in screen coordinates, where y grows downwards, so a
-    // heading of +0.5 is nose-down and the scene angle is its mirror.
-    const towards = Math.cos(heading);
-    if (towards > FLIP_DEADZONE) fish3D.facing = 1;
-    else if (towards < -FLIP_DEADZONE) fish3D.facing = -1;
-    const targetSide = fish3D.facing < 0 ? 1 : 0;
+    // swimYaw 0 = nose to the right, π = nose to the left. Pitch is the
+    // screen-space climb (positive = down). Both come from the same values
+    // that move the fish, so the snout cannot trail behind the path.
+    const yaw =
+      swimYaw == null
+        ? Math.cos(heading) >= 0
+          ? 0
+          : Math.PI
+        : swimYaw;
+    const dive =
+      pitch == null ? Math.atan2(Math.sin(heading), Math.abs(Math.cos(heading))) : pitch;
+    const along = Math.cos(yaw);
 
-    const turn = fish3D.lastHeading === null ? 0 : wrapAngle(heading - fish3D.lastHeading);
-    fish3D.lastHeading = heading;
-
-    const rollRight = -heading;
-    const rollLeft = Math.PI - heading;
+    const targetYaw = yaw - QUARTER_TURN * along;
+    // Belly stays down: pitch in the screen plane, flipped when the fish
+    // already faces left so the snout still follows +Y-down of the tank.
+    const targetPitch = -dive * along;
 
     if (!fish3D.posed) {
-      fish3D.sideBlend = targetSide;
-      fish3D.roll = rollRight + (rollLeft - rollRight) * targetSide;
+      fish3D.yaw = targetYaw;
+      fish3D.pitch = targetPitch;
       fish3D.posed = true;
     } else {
-      fish3D.sideBlend += (targetSide - fish3D.sideBlend) * (1 - Math.exp(-dtSec / TURN_TAU));
+      fish3D.yaw = easeAngle(fish3D.yaw, targetYaw, dtSec, POSE_TAU);
+      fish3D.pitch = easeAngle(fish3D.pitch, targetPitch, dtSec, POSE_TAU);
     }
 
-    const u = fish3D.sideBlend;
-    fish3D.yaw = -QUARTER_TURN + (Math.PI + QUARTER_TURN * 2) * u;
-    fish3D.roll = easeAngle(fish3D.roll, rollRight + (rollLeft - rollRight) * u, dtSec, ROLL_TAU);
-
-    // Lean into the turn, the way a fish rolls its belly towards the inside of
-    // a bend.
-    const lean = Math.max(-0.45, Math.min(0.45, turn * 22)) * fish3D.facing;
-    fish3D.bank += (lean - fish3D.bank) * 0.06;
+    const turn = fish3D.lastYaw == null ? 0 : wrapAngle(yaw - fish3D.lastYaw);
+    fish3D.lastYaw = yaw;
+    const lean = Math.max(-0.35, Math.min(0.35, turn * 18));
+    fish3D.bank += (lean - fish3D.bank) * 0.08;
 
     root.rotation.y = fish3D.yaw;
-    root.rotation.z = fish3D.roll + Math.sin(phase * 0.7) * 0.02;
+    root.rotation.z = fish3D.pitch + Math.sin(phase * 0.7) * 0.02;
     root.rotation.x = fish3D.bank + Math.sin(phase * 0.45) * 0.03;
 
     fish3D.phase = phase;

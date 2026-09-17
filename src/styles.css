@@ -643,6 +643,8 @@ h1 {
 .join-bar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 16px 20px;
   padding-top: calc(12px + env(safe-area-inset-top));
 }

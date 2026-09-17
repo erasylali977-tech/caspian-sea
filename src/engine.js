@@ -87,10 +87,18 @@ class Splash {
 }
 
 const GAIT = {
-  fish: { cruise: 0.048, turn: 0.0028, tail: 1.0, depth: [0.2, 0.75], vertical: 0.85, boost: 0.0008, boostMul: 1.9, path: "mixed", avoid: 85 },
-  puffer: { cruise: 0.042, turn: 0.0024, tail: 0.45, depth: [0.3, 0.68], vertical: 0.7, boost: 0.0005, boostMul: 1.6, path: "wander", avoid: 80 },
+  fish: { cruise: 0.048, turn: 0.0034, tail: 1.0, depth: [0.2, 0.75], vertical: 0.32, boost: 0.0008, boostMul: 1.9, path: "mixed", avoid: 85 },
+  puffer: { cruise: 0.042, turn: 0.0028, tail: 0.45, depth: [0.3, 0.68], vertical: 0.28, boost: 0.0005, boostMul: 1.6, path: "wander", avoid: 80 },
   octopus: { cruise: 0.032, turn: 0.0022, tail: 0.6, depth: [0.52, 0.88], vertical: 0.8, boost: 0, boostMul: 1, path: "jet", avoid: 75 },
 };
+
+const MAX_PITCH_UP = 0.72;
+const MAX_PITCH_DOWN = 0.36;
+
+function clampPitch(p) {
+  if (p < 0) return Math.max(-MAX_PITCH_UP, p);
+  return Math.min(MAX_PITCH_DOWN, p);
+}
 
 function wrapAngle(a) {
   while (a > Math.PI) a -= Math.PI * 2;
@@ -101,13 +109,9 @@ function wrapAngle(a) {
 function pickPath(kindPath) {
   if (kindPath && kindPath !== "mixed") return kindPath;
   const r = Math.random();
-  if (r < 0.4) return "loop";
-  if (r < 0.75) return "wander";
-  return "weave";
-}
-
-function lerpAngle(a, b, t) {
-  return a + wrapAngle(b - a) * t;
+  if (r < 0.82) return "wander";
+  if (r < 0.94) return "weave";
+  return "loop";
 }
 
 class Fish {
@@ -151,7 +155,10 @@ class Fish {
     this.y = entering ? Math.max(40, tank.h * 0.08) : tank.h * (this.gait.depth[0] + Math.random() * 0.3);
     this.targetY = tank.h * (this.gait.depth[0] + Math.random() * (this.gait.depth[1] - this.gait.depth[0]));
     this.vy = entering ? 2.6 : 0;
-    this.heading = (Math.random() < 0.5 ? 0.12 : Math.PI - 0.12) + (Math.random() - 0.5) * 0.25;
+    this.facing = Math.random() < 0.5 ? 1 : -1;
+    this.heading = this.facing < 0 ? Math.PI - 0.12 : 0.12;
+    this.swimYaw = this.facing < 0 ? Math.PI : 0;
+    this.pitch = 0.08;
     this.speed = this.gait.cruise;
     this.phase = Math.random() * Math.PI * 2;
     this.dropT = 0;
@@ -164,7 +171,7 @@ class Fish {
       cx: tank.w * (0.32 + Math.random() * 0.36),
       cy: tank.h * (this.gait.depth[0] + Math.random() * 0.28),
       rx: tank.w * (0.18 + Math.random() * 0.18),
-      ry: tank.h * (0.045 + Math.random() * 0.07) * (this.kind === "dolphin" ? 1.6 : 1),
+      ry: tank.h * (0.018 + Math.random() * 0.03) * (this.kind === "dolphin" ? 1.6 : 1),
       w: (0.00018 + Math.random() * 0.00016) * (Math.random() < 0.5 ? -1 : 1),
       a: Math.random() * Math.PI * 2,
     };
@@ -185,9 +192,17 @@ class Fish {
   pickWaypoint(reset = false) {
     const padX = Math.max(70, this.width * 0.55);
     const [d0, d1] = this.gait.depth;
-    this.wx = padX + Math.random() * Math.max(40, this.tank.w - padX * 2);
-    this.wy = this.tank.h * (d0 + Math.random() * (d1 - d0));
-    if (reset) return;
+    const span = Math.max(40, this.tank.w - padX * 2);
+    const ahead = 140 + Math.random() * Math.max(80, span * 0.45);
+    const side = this.facing < 0 ? -1 : 1;
+    this.wx = Math.max(padX, Math.min(this.tank.w - padX, this.x + side * ahead * (Math.random() < 0.22 ? -1 : 1)));
+    this.wy = this.y + (Math.random() - 0.48) * this.tank.h * 0.14;
+    this.wy = Math.max(this.tank.h * d0, Math.min(this.tank.h * d1, this.wy));
+    if (reset) {
+      this.wx = padX + Math.random() * span;
+      this.wy = this.tank.h * (d0 + Math.random() * (d1 - d0));
+      return;
+    }
     if (this.path === "shelf") {
       this.wy = this.tank.h * (d0 + (d1 - d0) * (0.55 + Math.random() * 0.35));
     }
@@ -239,33 +254,37 @@ class Fish {
 
   steer(dt) {
     const goal = this.goal();
-    const dx = goal.x - this.x;
-    const dy = (goal.y - this.y) * this.gait.vertical;
+    let dx = goal.x - this.x;
+    let dy = (goal.y - this.y) * this.gait.vertical;
     const dist = Math.hypot(dx, dy) || 1;
     if ((this.path === "wander" || this.path === "jet") && dist < 48) this.pickWaypoint();
 
-    let desired = Math.atan2(dy, dx);
-    
-    // Collision avoidance - если рядом есть рыбы, избегаем их
     const avoidAngle = this.avoid();
     if (avoidAngle !== null) {
-      desired = lerpAngle(desired, avoidAngle, 0.65);
+      dx += Math.cos(avoidAngle) * 36;
+      dy += Math.sin(avoidAngle) * 12;
     }
-    
+
     const marginX = this.width * 0.45 + 36;
     const marginY0 = this.tank.h * this.gait.depth[0];
     const marginY1 = this.tank.h * this.gait.depth[1];
-    if (this.x < marginX) desired = lerpAngle(desired, 0, 0.7);
-    if (this.x > this.tank.w - marginX) desired = lerpAngle(desired, Math.PI, 0.7);
-    if (this.y < marginY0) desired = lerpAngle(desired, 0.45, 0.45);
-    if (this.y > marginY1) desired = lerpAngle(desired, -0.45, 0.45);
+    if (this.x < marginX) dx = Math.max(dx, 50);
+    if (this.x > this.tank.w - marginX) dx = Math.min(dx, -50);
+    if (this.y < marginY0) dy = Math.max(dy, 20);
+    if (this.y > marginY1) dy = Math.min(dy, -20);
 
-    const delta = wrapAngle(desired - this.heading);
+    if (dx < -18) this.facing = -1;
+    else if (dx > 18) this.facing = 1;
+
+    const targetYaw = this.facing < 0 ? Math.PI : 0;
+    const yawDelta = targetYaw - this.swimYaw;
     const maxTurn = this.gait.turn * dt;
-    this.heading += Math.max(-maxTurn, Math.min(maxTurn, delta));
-    this.heading = wrapAngle(this.heading);
+    this.swimYaw = Math.max(0, Math.min(Math.PI, this.swimYaw + Math.max(-maxTurn, Math.min(maxTurn, yawDelta))));
 
-    const turning = Math.min(1, Math.abs(delta) / 1.1);
+    const turning = Math.min(1, Math.abs(yawDelta) / 1.1);
+    const wantPitch = clampPitch(Math.atan2(dy, Math.max(Math.abs(dx), 48)));
+    this.pitch += (wantPitch * (1 - turning * 0.7) - this.pitch) * Math.min(1, 0.09 * dt / 16);
+
     let target = this.gait.cruise * (0.62 + (1 - turning) * 0.5);
     if (this.boost > 0) {
       this.boost -= dt;
@@ -283,8 +302,10 @@ class Fish {
       target = this.gait.cruise * (0.2 + pulse * 2.2);
     }
     this.speed = lerp(this.speed, Math.max(0.008, target), 0.035);
-    this.x += Math.cos(this.heading) * this.speed * dt;
-    this.y += Math.sin(this.heading) * this.speed * dt;
+    const noseX = Math.cos(this.swimYaw);
+    this.x += noseX * this.speed * dt;
+    this.y += Math.sin(this.pitch) * this.speed * dt;
+    this.heading = Math.atan2(Math.sin(this.pitch), noseX * Math.max(0.4, Math.cos(this.pitch)));
     this.x = Math.max(marginX * 0.4, Math.min(this.tank.w - marginX * 0.4, this.x));
     this.y = Math.max(this.tank.h * 0.14, Math.min(this.tank.h * 0.88, this.y));
   }
@@ -293,7 +314,8 @@ class Fish {
     this.dropT += dt;
     this.vy += 0.028 * dt;
     this.y += this.vy;
-    this.heading = lerpAngle(this.heading, Math.PI / 2, 0.08);
+    this.pitch = lerp(this.pitch, MAX_PITCH_DOWN, 0.08);
+    this.heading = this.facing < 0 ? Math.PI - this.pitch : this.pitch;
     if (!this.splashed && this.y >= this.targetY - 8) {
       this.splashed = true;
       this.tank.splashes.push(new Splash(this.x, this.y + this.height * 0.12));
@@ -302,7 +324,10 @@ class Fish {
       this.y = this.targetY;
       this.entering = false;
       this.vy = 0;
-      this.heading = (Math.random() < 0.5 ? 0.1 : Math.PI - 0.1);
+      this.pitch = 0.08;
+      this.facing = Math.random() < 0.5 ? 1 : -1;
+      this.swimYaw = this.facing < 0 ? Math.PI : 0;
+      this.heading = this.facing < 0 ? Math.PI - 0.1 : 0.1;
     }
   }
 
@@ -351,7 +376,9 @@ class Fish {
             this.heading,
             this.phase,
             this.speed,
-            this.tank.dt || 16
+            this.tank.dt || 16,
+            this.swimYaw,
+            this.pitch
           );
         } else if (this.tank.threeEngine?.initialized) {
           this.fish3D = this.tank.threeEngine.addFish(
@@ -385,8 +412,8 @@ class Fish {
     } else {
       // Рыбы плавают на боку, а не вверх тормашками: разворот налево - это
       // зеркало, а не поворот на 180 градусов.
-      const mirrored = Math.cos(this.heading) < 0;
-      ctx.rotate(mirrored ? this.heading - Math.PI : this.heading);
+      const mirrored = Math.cos(this.swimYaw) < 0;
+      ctx.rotate(this.pitch);
       if (mirrored) ctx.scale(-1, 1);
       const tailWag = Math.sin(this.phase * 2.0) * 0.06 * this.gait.tail;
       ctx.save();
