@@ -11,15 +11,78 @@ const FISH_LENGTH = 1.15;
 const QUARTER_TURN = 0.28;
 const POSE_TAU = 0.22;
 
-function inkAt(data, w, x, y) {
-  const i = (y * w + x) * 4;
-  if (data[i + 3] < 28) return false;
+function isPaper(data, i) {
+  if (data[i + 3] < 28) return true;
   const max = Math.max(data[i], data[i + 1], data[i + 2]);
   const min = Math.min(data[i], data[i + 1], data[i + 2]);
   const luma = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
   const sat = max === 0 ? 0 : (max - min) / max;
-  if (luma > 238 && sat < 0.1) return false;
-  return true;
+  return luma > 208 && sat < 0.16;
+}
+
+// JPEG cutouts keep a white rectangle around an oval fish. Those corners
+// map onto fins and snout of the 3D mesh, so the coloring looks like a
+// stamp. Fill only paper that touches the frame; keep a white belly.
+function floodPaintIntoPaper(data, w, h) {
+  const n = w * h;
+  const outside = new Uint8Array(n);
+  const stack = [];
+  const seed = (i) => {
+    if (i < 0 || i >= n || outside[i] || !isPaper(data, i * 4)) return;
+    outside[i] = 1;
+    stack.push(i);
+  };
+  for (let x = 0; x < w; x++) {
+    seed(x);
+    seed((h - 1) * w + x);
+  }
+  for (let y = 0; y < h; y++) {
+    seed(y * w);
+    seed(y * w + w - 1);
+  }
+  while (stack.length) {
+    const i = stack.pop();
+    const x = i % w;
+    const y = (i / w) | 0;
+    if (x > 0) seed(i - 1);
+    if (x + 1 < w) seed(i + 1);
+    if (y > 0) seed(i - w);
+    if (y + 1 < h) seed(i + w);
+  }
+
+  const seen = new Uint8Array(n);
+  const q = new Int32Array(n);
+  let head = 0;
+  let tail = 0;
+  for (let i = 0; i < n; i++) {
+    if (isPaper(data, i * 4)) continue;
+    seen[i] = 1;
+    q[tail++] = i;
+  }
+  if (!tail) return;
+  while (head < tail) {
+    const i = q[head++];
+    const x = i % w;
+    const y = (i / w) | 0;
+    const o = i * 4;
+    const r = data[o];
+    const g = data[o + 1];
+    const b = data[o + 2];
+    const next = [i - 1, i + 1, i - w, i + w];
+    const ok = [x > 0, x + 1 < w, y > 0, y + 1 < h];
+    for (let k = 0; k < 4; k++) {
+      if (!ok[k]) continue;
+      const ni = next[k];
+      if (seen[ni] || !outside[ni]) continue;
+      seen[ni] = 1;
+      const no = ni * 4;
+      data[no] = r;
+      data[no + 1] = g;
+      data[no + 2] = b;
+      data[no + 3] = 255;
+      q[tail++] = ni;
+    }
+  }
 }
 
 function boostDrawing(img) {
@@ -27,7 +90,7 @@ function boostDrawing(img) {
   src.width = Math.max(2, img.width);
   src.height = Math.max(2, img.height);
   const sctx = src.getContext("2d", { willReadFrequently: true });
-  sctx.filter = "saturate(1.5) contrast(1.1) brightness(1.05)";
+  sctx.filter = "saturate(1.55) contrast(1.12) brightness(1.04)";
   sctx.drawImage(img, 0, 0);
   sctx.filter = "none";
   const shot = sctx.getImageData(0, 0, src.width, src.height);
@@ -40,16 +103,7 @@ function boostDrawing(img) {
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4;
-      const max = Math.max(data[i], data[i + 1], data[i + 2]);
-      const min = Math.min(data[i], data[i + 1], data[i + 2]);
-      const luma = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-      const sat = max === 0 ? 0 : (max - min) / max;
-      // Paper stays see-through so the 3D clay around the drawing does not
-      // show up as a white body with a stamp on it.
-      if (data[i + 3] < 28 || (luma > 238 && sat < 0.1)) {
-        data[i + 3] = 0;
-        continue;
-      }
+      if (isPaper(data, i)) continue;
       data[i + 3] = 255;
       if (x < minX) minX = x;
       if (y < minY) minY = y;
@@ -57,18 +111,22 @@ function boostDrawing(img) {
       if (y > maxY) maxY = y;
     }
   }
-  sctx.putImageData(shot, 0, 0);
-  if (maxX <= minX || maxY <= minY) return src;
+  if (maxX <= minX || maxY <= minY) {
+    floodPaintIntoPaper(data, w, h);
+    sctx.putImageData(shot, 0, 0);
+    return src;
+  }
 
-  const pad = Math.round(Math.max(2, (maxX - minX) * 0.02));
-  const sx = Math.max(0, minX - pad);
-  const sy = Math.max(0, minY - pad);
-  const sw = Math.min(w - sx, maxX - minX + pad * 2);
-  const sh = Math.min(h - sy, maxY - minY + pad * 2);
+  const sx = minX;
+  const sy = minY;
+  const sw = maxX - minX + 1;
+  const sh = maxY - minY + 1;
+  const cropped = sctx.getImageData(sx, sy, sw, sh);
+  floodPaintIntoPaper(cropped.data, sw, sh);
   const c = document.createElement("canvas");
   c.width = sw;
   c.height = sh;
-  c.getContext("2d").drawImage(src, sx, sy, sw, sh, 0, 0, sw, sh);
+  c.getContext("2d").putImageData(cropped, 0, 0);
   return c;
 }
 
@@ -137,6 +195,9 @@ function paintDrawingOnFish(aligned, drawingUrl, templateHeadOnRight) {
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.flipY = true;
       tex.anisotropy = 4;
+      tex.generateMipmaps = false;
+      tex.minFilter = THREE.LinearFilter;
+      tex.magFilter = THREE.LinearFilter;
       tex.wrapS = THREE.ClampToEdgeWrapping;
       tex.wrapT = THREE.ClampToEdgeWrapping;
       tex.needsUpdate = true;
@@ -170,8 +231,7 @@ function paintDrawingOnFish(aligned, drawingUrl, templateHeadOnRight) {
           map: tex,
           color: 0xffffff,
           side: THREE.DoubleSide,
-          transparent: true,
-          alphaTest: 0.08,
+          transparent: false,
           depthWrite: true,
         });
         const geo = child.geometry;

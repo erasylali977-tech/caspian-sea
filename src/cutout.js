@@ -245,7 +245,7 @@ export function cutOutFish(source, tolerance = 42) {
     return safeJpeg(canvas);
   }
 
-  const pad = Math.round(Math.max(8, (maxX - minX) * 0.06));
+  const pad = Math.round(Math.max(2, (maxX - minX) * 0.02));
   const sx = Math.max(0, minX - pad);
   const sy = Math.max(0, minY - pad);
   const cropW = Math.min(w - sx, maxX - minX + pad * 2);
