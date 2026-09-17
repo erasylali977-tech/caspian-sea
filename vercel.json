@@ -1,0 +1,17 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/.netlify/functions/room", "destination": "/api/room" },
+    { "source": "/aquarium", "destination": "/aquarium.html" },
+    { "source": "/join", "destination": "/join.html" },
+    { "source": "/templates", "destination": "/templates.html" },
+    { "source": "/test-3d", "destination": "/test-3d.html" }
+  ],
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    }
+  ]
+}

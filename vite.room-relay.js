@@ -85,14 +85,14 @@ export function localRoomRelay() {
   return {
     name: "local-room-relay",
     configureServer(server) {
-      server.middlewares.use("/.netlify/functions/room", (req, res) => {
-        handle(req, res);
-      });
+      const run = (req, res) => handle(req, res);
+      server.middlewares.use("/api/room", run);
+      server.middlewares.use("/.netlify/functions/room", run);
     },
     configurePreviewServer(server) {
-      server.middlewares.use("/.netlify/functions/room", (req, res) => {
-        handle(req, res);
-      });
+      const run = (req, res) => handle(req, res);
+      server.middlewares.use("/api/room", run);
+      server.middlewares.use("/.netlify/functions/room", run);
     },
   };
 }

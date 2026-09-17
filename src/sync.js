@@ -18,7 +18,7 @@ export function newRoomCode() {
 }
 
 function relayUrl(code) {
-  return `/.netlify/functions/room?id=${encodeURIComponent(code)}`;
+  return `/api/room?id=${encodeURIComponent(code)}`;
 }
 
 function wait(ms) {
