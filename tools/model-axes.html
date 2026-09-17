@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { margin: 0; background: #0b2233; color: #cfe; font: 12px monospace; }
+      .grid { display: grid; grid-template-columns: repeat(3, 320px); gap: 6px; padding: 6px; }
+      .cell { position: relative; }
+      .cell span { position: absolute; left: 4px; top: 2px; background: #000a; padding: 1px 4px; }
+      canvas { display: block; background: #123; }
+    </style>
+  </head>
+  <body>
+    <div class="grid" id="grid"></div>
+    <script type="module">
+      import * as THREE from "three";
+      import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+      const MODELS = ["angel", "beak", "carp", "carp2", "goldfish", "ornate", "stripe"];
+      const YAW = Number(new URLSearchParams(location.search).get("yaw") ?? Math.PI / 2);
+      const grid = document.getElementById("grid");
+      const loader = new GLTFLoader();
+      let done = 0;
+
+      MODELS.forEach((name) => {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        const label = document.createElement("span");
+        label.textContent = name;
+        cell.appendChild(label);
+        grid.appendChild(cell);
+
+        const W = 320, H = 240;
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(W, H);
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        cell.appendChild(renderer.domElement);
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0e2b3d);
+        const aspect = W / H;
+        const f = 2.2;
+        const cam = new THREE.OrthographicCamera((f * aspect) / -2, (f * aspect) / 2, f / 2, f / -2, 0.1, 100);
+        cam.position.set(0, 0, 10);
+        scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+        const key = new THREE.DirectionalLight(0xffffff, 0.4);
+        key.position.set(4, 6, 8);
+        scene.add(key);
+
+        loader.load(`/models/${name}.glb`, (gltf) => {
+          const inner = gltf.scene;
+          const box = new THREE.Box3().setFromObject(inner);
+          inner.position.sub(box.getCenter(new THREE.Vector3()));
+          const size = box.getSize(new THREE.Vector3());
+          inner.scale.setScalar(1.6 / Math.max(size.x, size.y, size.z));
+          const root = new THREE.Group();
+          root.add(inner);
+          root.rotation.y = YAW;
+          scene.add(root);
+          renderer.render(scene, cam);
+          done += 1;
+          if (done === MODELS.length) document.title = "READY";
+        });
+      });
+    </script>
+  </body>
+</html>

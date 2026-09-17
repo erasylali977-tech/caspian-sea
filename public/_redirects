@@ -1,0 +1,5 @@
+/api/room  /.netlify/functions/room  200
+/aquarium  /aquarium.html  200
+/join      /join.html  200
+/templates /templates.html  200
+/test-3d   /test-3d.html  200

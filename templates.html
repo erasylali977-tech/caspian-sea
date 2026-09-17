@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Шаблоны A4</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Noto+Sans:wght@400;700;800&family=Unbounded:wght@700;800&display=swap" rel="stylesheet" />
+  </head>
+  <body class="tpl-page">
+    <div class="tpl-toolbar no-print">
+      <a class="brand" href="./"><span class="brand-mark"></span><span data-i="brand">Аквариум</span></a>
+      <div class="top-nav">
+        <button class="gold" id="pdfBtn" data-i="templatesPdf">Скачать PDF</button>
+        <nav class="lang-switch" aria-label="Language">
+          <button type="button" data-set-lang="ru">RU</button>
+          <button type="button" data-set-lang="kk">ҚАЗ</button>
+          <button type="button" data-set-lang="en">EN</button>
+        </nav>
+      </div>
+    </div>
+    <section class="section no-print">
+      <h2 data-i="templatesTitle">Шаблоны рыбок A4</h2>
+      <p class="plot" data-i="templatesLead"></p>
+    </section>
+    <div class="sheets" id="sheets"></div>
+    <script type="module" src="/src/templates-page.js"></script>
+  </body>
+</html>

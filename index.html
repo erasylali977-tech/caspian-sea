@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#070d18" />
+    <title>Аквариум</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Noto+Sans:wght@400;700;800&family=Unbounded:wght@700;800&display=swap" rel="stylesheet" />
+  </head>
+  <body class="home">
+    <header class="top">
+      <a class="brand" href="./">
+        <span class="brand-mark"></span>
+        <span data-i="brand">Аквариум</span>
+      </a>
+      <nav class="top-nav">
+        <nav class="lang-switch" aria-label="Language">
+          <button type="button" data-set-lang="ru">RU</button>
+          <button type="button" data-set-lang="kk">ҚАЗ</button>
+          <button type="button" data-set-lang="en">EN</button>
+        </nav>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div class="hero-art"></div>
+      <div class="hero-copy">
+        <div class="kicker"><b>0+</b> <span data-i="meta">0+ · семейный · 5 минут до чуда</span></div>
+        <h1 data-i="brand">Аквариум</h1>
+        <p class="lead" data-i="tagline">Нарисуй рыбку — она оживёт на телевизоре</p>
+        <div class="cta">
+          <a class="gold" id="openTv" href="./aquarium.html" data-i="openTv">Включить аквариум</a>
+          <a class="ghost" href="./templates.html" data-i="printTemplates">Виды рыбок</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="faq-list">
+      <article class="faq">
+        <button type="button" class="faq-q" aria-expanded="false">
+          <span data-i="plotTitle">Сюжет</span>
+          <i class="faq-icon" aria-hidden="true"></i>
+        </button>
+        <div class="faq-body">
+          <p class="plot" data-i="plot"></p>
+        </div>
+      </article>
+
+      <article class="faq">
+        <button type="button" class="faq-q" aria-expanded="false">
+          <span data-i="worldsTitle">Миры аквариума</span>
+          <i class="faq-icon" aria-hidden="true"></i>
+        </button>
+        <div class="faq-body">
+          <p class="plot" data-i="worldsLead"></p>
+          <div class="worlds" id="worlds"></div>
+        </div>
+      </article>
+
+      <article class="faq">
+        <button type="button" class="faq-q" aria-expanded="false">
+          <span data-i="castTitle">Кого можно раскрасить</span>
+          <i class="faq-icon" aria-hidden="true"></i>
+        </button>
+        <div class="faq-body">
+          <p class="note" data-i="characterHint" style="margin-bottom:16px"></p>
+          <div class="cast" id="cast"></div>
+        </div>
+      </article>
+
+      <article class="faq">
+        <button type="button" class="faq-q" aria-expanded="false">
+          <span data-i="stepTitle">Как это работает</span>
+          <i class="faq-icon" aria-hidden="true"></i>
+        </button>
+        <div class="faq-body">
+          <div class="steps">
+            <article class="step"><div class="num">1</div><h3 data-i="s1t"></h3><p data-i="s1d"></p></article>
+            <article class="step"><div class="num">2</div><h3 data-i="s2t"></h3><p data-i="s2d"></p></article>
+            <article class="step"><div class="num">3</div><h3 data-i="s3t"></h3><p data-i="s3d"></p></article>
+            <article class="step"><div class="num">4</div><h3 data-i="s4t"></h3><p data-i="s4d"></p></article>
+          </div>
+        </div>
+      </article>
+
+      <article class="faq">
+        <button type="button" class="faq-q" aria-expanded="false">
+          <span data-i="tvTitle">Как показать на телевизоре</span>
+          <i class="faq-icon" aria-hidden="true"></i>
+        </button>
+        <div class="faq-body">
+          <p class="plot" data-i="tvLead"></p>
+          <div class="tv-grid" style="margin-top:20px">
+            <article class="tv-card"><h3 data-i="tv1t"></h3><p data-i="tv1d"></p></article>
+            <article class="tv-card"><h3 data-i="tv2t"></h3><p data-i="tv2d"></p></article>
+            <article class="tv-card"><h3 data-i="tv3t"></h3><p data-i="tv3d"></p></article>
+            <article class="tv-card"><h3 data-i="tv4t"></h3><p data-i="tv4d"></p></article>
+          </div>
+          <p class="hint" data-i="tvHint"></p>
+        </div>
+      </article>
+    </section>
+
+    <footer class="foot" data-i="footer"></footer>
+    <script type="module" src="/src/home.js"></script>
+  </body>
+</html>

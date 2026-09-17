@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { background: #101820; color: #dfe; font: 13px/1.5 monospace; padding: 12px; }
+      table { border-collapse: collapse; }
+      td, th { border: 1px solid #345; padding: 3px 8px; text-align: right; }
+      td:first-child { text-align: left; }
+      .ok { color: #7f7; }
+      .bad { color: #f77; background: #400; }
+    </style>
+  </head>
+  <body>
+    <div id="out">running…</div>
+    <script type="module">
+      import { loadImage } from "/src/templates-data.js";
+      import { cutOutFish } from "/src/cutout.js";
+      import { facingSignals, silhouette } from "/src/fish-facing.js";
+
+      // ground truth: which side of the source image the head is on
+      const TRUTH = {
+        "angel.jpg": "left",
+        "beak.png": "left",
+        "carp.webp": "left",
+        "carp2.webp": "left",
+        "goldfish.jpeg": "right",
+        "ornate.webp": "left",
+        "perch.jpeg": "left",
+        "puffer.png": "right",
+        "stripe.jpeg": "right",
+      };
+
+      function mirror(img) {
+        const c = document.createElement("canvas");
+        c.width = img.naturalWidth || img.width;
+        c.height = img.naturalHeight || img.height;
+        const ctx = c.getContext("2d");
+        ctx.translate(c.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, 0, 0);
+        return c;
+      }
+
+      const rows = [];
+      let fails = 0;
+      for (const [file, truth] of Object.entries(TRUTH)) {
+        const raw = await loadImage(`/fish/${file}`);
+        const cutUrl = cutOutFish(raw);
+        const cut = await loadImage(cutUrl);
+
+        for (const [variant, img, want] of [
+          ["raw", raw, truth],
+          ["cutout", cut, truth],
+          ["cutout-mirrored", mirror(cut), truth === "left" ? "right" : "left"],
+        ]) {
+          const s = facingSignals(img);
+          const got = !s ? "?" : s.score > 0 ? "right" : "left";
+          const ok = got === want;
+          if (!ok) fails += 1;
+          rows.push(
+            `<tr class="${ok ? "ok" : "bad"}"><td>${file} <b>${variant}</b></td>` +
+              `<td>${s ? s.waist.toFixed(3) : "-"}</td><td>${s ? s.fork.toFixed(3) : "-"}</td>` +
+              `<td>${s ? s.solid.toFixed(3) : "-"}</td><td>${s ? s.score.toFixed(3) : "-"}</td>` +
+              `<td>${got}</td><td>${want}</td><td>${ok ? "OK" : "FAIL"}</td></tr>`
+          );
+        }
+      }
+      document.getElementById("out").innerHTML =
+        `<h3>failures: ${fails} / ${rows.length}</h3>` +
+        `<table><tr><th>image</th><th>waist</th><th>fork</th><th>solid</th><th>score</th><th>got</th><th>want</th><th></th></tr>${rows.join("")}</table>`;
+      document.title = "READY";
+    </script>
+  </body>
+</html>

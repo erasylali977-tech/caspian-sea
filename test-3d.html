@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>2D и 3D рыбки</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #062436;
+      color: #eef6ff;
+      min-height: 100vh;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      background: rgba(0, 0, 0, 0.35);
+    }
+    header a { color: #ffd234; text-decoration: none; }
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+    .tabs button, .actions a {
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      padding: 8px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      font: inherit;
+    }
+    .tabs button.active { background: #ffd234; color: #062436; font-weight: 700; }
+    .actions a { display: inline-block; text-decoration: none; }
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: calc(100vh - 72px);
+    }
+    .pane {
+      position: relative;
+      min-height: 50vh;
+      overflow: hidden;
+    }
+    .pane.flat {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+      padding: 24px;
+    }
+    .pane.flat img { max-width: 92%; max-height: 78vh; object-fit: contain; }
+    .pane.volume { background: linear-gradient(180deg, #083a62, #02344a); }
+    #canvas-container, #canvas-container canvas { width: 100%; height: 100%; display: block; }
+    .label {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      background: rgba(0,0,0,0.7);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 14px;
+      max-width: 280px;
+    }
+    #loading {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: rgba(2, 20, 32, 0.55);
+      z-index: 2;
+    }
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 4px solid rgba(255,255,255,0.15);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 800px) {
+      .split { grid-template-columns: 1fr; }
+      .pane { min-height: 46vh; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <strong>2D раскраска</strong> рядом с <strong>3D моделью</strong>
+      · <a href="./">на главную</a>
+    </div>
+    <div class="tabs" id="tabs"></div>
+    <div class="actions">
+      <a href="./aquarium.html?compare=1">Пустить всех в аквариум</a>
+    </div>
+  </header>
+  <div class="split">
+    <section class="pane flat">
+      <div class="label">2D — лист раскраски, плоский рисунок</div>
+      <img id="flat" alt="2D раскраска" />
+    </section>
+    <section class="pane volume">
+      <div class="label">3D — объём, поворот мышкой, свет и тень</div>
+      <div id="loading"><div><div class="spinner"></div>Загрузка модели…</div></div>
+      <div id="canvas-container"></div>
+    </section>
+  </div>
+  <script type="module" src="/src/test-3d.js?v=6"></script>
+</body>
+</html>

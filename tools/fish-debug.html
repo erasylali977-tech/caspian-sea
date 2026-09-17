@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { margin: 0; background: #08222f; color: #cfe; font: 12px monospace; }
+      #wrap { position: relative; width: 1080px; height: 720px; }
+      canvas { position: absolute; inset: 0; }
+      #tags { position: absolute; inset: 0; pointer-events: none; }
+      .tag { position: absolute; transform: translate(-50%, 0); background: #000a; padding: 1px 4px; }
+    </style>
+  </head>
+  <body>
+    <div id="wrap">
+      <canvas id="c" width="1080" height="720"></canvas>
+      <div id="tags"></div>
+    </div>
+    <script type="module">
+      import { ThreeEngine } from "/src/engine-3d.js";
+
+      const FISH = ["angel", "beak", "carp", "carp2", "goldfish", "ornate", "stripe"];
+      const EXT = { angel: "jpg", beak: "png", carp: "webp", carp2: "webp", goldfish: "jpeg", ornate: "webp", stripe: "jpeg" };
+      const params = new URLSearchParams(location.search);
+      // headings to test: 0 = right, PI = left, PI/2 = down, -PI/2 = up, 0.6 = down-right
+      const HEADING = Number(params.get("h") ?? 0);
+      const PAINT = params.get("paint") !== "0";
+      const SPIN = params.get("spin") === "1";
+
+      const W = 1080, H = 720;
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+      const engine = new ThreeEngine();
+      engine.init(W, H);
+
+      // zoom the ortho frustum so fish fill the cells
+      const ZOOM = Number(params.get("zoom") ?? 3);
+      const aspect = W / H;
+      const fr = 10 / ZOOM;
+      engine.camera.left = (fr * aspect) / -2;
+      engine.camera.right = (fr * aspect) / 2;
+      engine.camera.top = fr / 2;
+      engine.camera.bottom = fr / -2;
+      engine.camera.updateProjectionMatrix();
+      // updateFish maps screen px -> world using frustumSize 10, so compensate
+      const origUpdate = engine.updateFish.bind(engine);
+      engine.updateFish = (f, x, y, h, p, s, dt) => {
+        origUpdate(f, x, y, h, p, s, dt);
+        if (f?.root) {
+          f.root.position.x /= ZOOM;
+          f.root.position.y /= ZOOM;
+        }
+      };
+
+      const tags = document.getElementById("tags");
+      const items = FISH.map((name, i) => {
+        const col = i % 3, row = (i / 3) | 0;
+        const x = 180 + col * 360;
+        const y = 120 + row * 220;
+        const tag = document.createElement("div");
+        tag.className = "tag";
+        tag.style.left = `${x}px`;
+        tag.style.top = `${y - 105}px`;
+        tag.textContent = name;
+        tags.appendChild(tag);
+        const payload = { id: name, model3d: `/models/${name}.glb`, templateId: name };
+        if (PAINT) payload.image = `/fish/${name}.${EXT[name]}`;
+        return { name, x, y, f3d: engine.addFish(payload, x, y, 0.2) };
+      });
+
+      let phase = 0;
+      let t0 = performance.now();
+      function frame(now) {
+        const dt = Math.min(32, now - t0);
+        t0 = now;
+        phase += 0.05;
+        const heading = SPIN ? (now / 1400) % (Math.PI * 2) : HEADING;
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = "#0e2b3d";
+        ctx.fillRect(0, 0, W, H);
+        items.forEach((it) => engine.updateFish(it.f3d, it.x, it.y, heading, phase, 0.05, dt));
+        engine.render(ctx);
+        if (items.every((it) => it.f3d?.loaded)) document.title = "READY";
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    </script>
+  </body>
+</html>

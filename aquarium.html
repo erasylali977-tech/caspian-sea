@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#02344a" />
+    <title>Аквариум</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Noto+Sans:wght@400;700;800&family=Unbounded:wght@700;800&display=swap" rel="stylesheet" />
+  </head>
+  <body class="aqua-page">
+    <canvas id="tank"></canvas>
+    <div class="hud">
+      <div class="hud-top">
+        <a class="brand" href="./" target="_top"><span class="brand-mark"></span><span data-i="brand">Аквариум</span></a>
+        <nav class="lang-switch" aria-label="Language">
+          <button type="button" data-set-lang="ru">RU</button>
+          <button type="button" data-set-lang="kk">ҚАЗ</button>
+          <button type="button" data-set-lang="en">EN</button>
+        </nav>
+      </div>
+      <div class="scenes" id="scenes"></div>
+      <div class="aqua-controls">
+        <div class="aqua-qr-wrap">
+          <button class="aqua-btn" id="joinBtn" type="button" title="QR" aria-label="QR">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 3h8v8H3V3zm2 2v4h4V5H5zm8-2h8v8h-8V3zm2 2v4h4V5h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm10-2h2v2h-2v-2zm4 0h2v2h-2v-2zm-4 4h2v2h-2v-2zm4 0h2v4h-4v-2h2v-2zm-2 4h2v2h-2v-2z"/>
+            </svg>
+          </button>
+          <div class="join-panel" id="joinPanel" hidden>
+            <img id="joinQr" alt="QR" hidden />
+          </div>
+        </div>
+        <button class="aqua-action" id="feedBtn" type="button">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="7" cy="6" r="1.7"/>
+            <circle cx="12" cy="4.2" r="1.9"/>
+            <circle cx="17" cy="6.5" r="1.5"/>
+            <circle cx="9.5" cy="10" r="1.4"/>
+            <circle cx="14.5" cy="9.5" r="1.6"/>
+          </svg>
+          <span data-i="aquaFeed">Покормить</span>
+        </button>
+        <button class="aqua-action" id="catchBtn" type="button">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <path d="M3 3l7.5 7.5"/>
+            <ellipse cx="15" cy="15" rx="6.5" ry="6"/>
+            <path d="M9.5 15h11M15 9.5v11M10.6 11.2l8.8 7.6M19.4 11.2l-8.8 7.6"/>
+          </svg>
+          <span data-i="aquaCatch">Сачок</span>
+        </button>
+        <button class="aqua-btn" id="musicBtn" type="button" title="Музыка" aria-label="Музыка">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 18V5l12-2v13M9 13l12-2"/>
+            <circle cx="6" cy="18" r="3"/>
+            <circle cx="18" cy="16" r="3"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <audio id="ambientAudio" loop preload="auto">
+      <source src="/audio/ocean-ambience.mp3" type="audio/mpeg">
+    </audio>
+    <script type="module" src="/src/aquarium-page.js"></script>
+  </body>
+</html>

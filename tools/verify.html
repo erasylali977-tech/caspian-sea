@@ -1,0 +1,187 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { margin: 0; background: #08222f; color: #cfe; font: 12px monospace; }
+      #log { padding: 6px; color: #f99; white-space: pre-wrap; }
+      #wrap { position: relative; width: 1080px; height: 700px; }
+      canvas { position: absolute; inset: 0; }
+      #tags { position: absolute; inset: 0; pointer-events: none; }
+      .tag { position: absolute; transform: translate(-50%, 0); background: #000a; padding: 1px 4px; }
+    </style>
+  </head>
+  <body>
+    <div id="log"></div>
+    <div id="wrap">
+      <canvas id="c" width="1080" height="700"></canvas>
+      <div id="tags"></div>
+    </div>
+    <script type="module">
+      const log = document.getElementById("log");
+      window.addEventListener("error", (e) => (log.textContent += `ERROR ${e.message}\n`));
+      window.addEventListener("unhandledrejection", (e) => (log.textContent += `REJECT ${e.reason}\n`));
+
+      const { ThreeEngine } = await import("/src/engine-3d.js");
+      const { cutOutFish } = await import("/src/cutout.js");
+      const { matchFishTemplate } = await import("/src/match-fish.js");
+      const { loadImage, FISH } = await import("/src/templates-data.js");
+      const { silhouette } = await import("/src/fish-facing.js");
+
+      const params = new URLSearchParams(location.search);
+      const MODE = params.get("mode") || "colored"; // colored | phases
+      const HEADING = Number(params.get("h") ?? 0);
+      const ONLY = params.get("fish") || "carp";
+      const ZOOM = Number(params.get("zoom") ?? 3);
+
+      const EXT = { angel: "jpg", beak: "png", carp: "webp", carp2: "webp", goldfish: "jpeg", ornate: "webp", stripe: "jpeg" };
+
+      // Fake a child colouring the page in: flood the paper in from the
+      // border, then paint bands of colour over everything it cannot reach,
+      // which is exactly the inside of the fish.
+      function colorize(img, seed) {
+        const w = img.naturalWidth || img.width;
+        const h = img.naturalHeight || img.height;
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext("2d", { willReadFrequently: true });
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        const shot = ctx.getImageData(0, 0, w, h);
+        const d = shot.data;
+
+        const ink = new Uint8Array(w * h);
+        for (let i = 0; i < w * h; i++) {
+          const l = d[i * 4] * 0.299 + d[i * 4 + 1] * 0.587 + d[i * 4 + 2] * 0.114;
+          ink[i] = l < 170 ? 1 : 0;
+        }
+        const outside = new Uint8Array(w * h);
+        const stack = [];
+        const push = (x, y) => {
+          if (x < 0 || y < 0 || x >= w || y >= h) return;
+          const i = y * w + x;
+          if (outside[i] || ink[i]) return;
+          outside[i] = 1;
+          stack.push(i);
+        };
+        for (let x = 0; x < w; x++) { push(x, 0); push(x, h - 1); }
+        for (let y = 0; y < h; y++) { push(0, y); push(w - 1, y); }
+        while (stack.length) {
+          const i = stack.pop();
+          const x = i % w;
+          const y = (i / w) | 0;
+          push(x + 1, y); push(x - 1, y); push(x, y + 1); push(x, y - 1);
+        }
+
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const i = y * w + x;
+            if (outside[i] || ink[i]) continue;
+            const band = Math.floor((x / w) * 6 + seed) % 5;
+            const [r, g, b] = hslToRgb([12, 45, 190, 280, 140][band] / 360, 0.85, 0.55);
+            d[i * 4] = r;
+            d[i * 4 + 1] = g;
+            d[i * 4 + 2] = b;
+          }
+        }
+        ctx.putImageData(shot, 0, 0);
+        return c;
+      }
+
+      function hslToRgb(h, s, l) {
+        const f = (n) => {
+          const k = (n + h * 12) % 12;
+          const a = s * Math.min(l, 1 - l);
+          return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))));
+        };
+        return [f(0), f(8), f(4)];
+      }
+
+      const W = 1080, H = 700;
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+      const engine = new ThreeEngine();
+      engine.init(W, H);
+      const aspect = W / H;
+      const fr = 10 / ZOOM;
+      engine.camera.left = (fr * aspect) / -2;
+      engine.camera.right = (fr * aspect) / 2;
+      engine.camera.top = fr / 2;
+      engine.camera.bottom = fr / -2;
+      engine.camera.updateProjectionMatrix();
+      const origUpdate = engine.updateFish.bind(engine);
+      engine.updateFish = (f, x, y, h, p, s) => {
+        origUpdate(f, x, y, h, p, s);
+        if (f?.root) {
+          f.root.position.x /= ZOOM;
+          f.root.position.y /= ZOOM;
+        }
+      };
+
+      const tags = document.getElementById("tags");
+      function tag(x, y, text) {
+        const el = document.createElement("div");
+        el.className = "tag";
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        el.textContent = text;
+        tags.appendChild(el);
+      }
+
+      const items = [];
+
+      if (MODE === "colored") {
+        const names = Object.keys(EXT);
+        for (let i = 0; i < names.length; i++) {
+          const name = names[i];
+          const raw = await loadImage(`/fish/${name}.${EXT[name]}`);
+          const colored = colorize(raw, i);
+          const cut = cutOutFish(colored);
+          const matched = await matchFishTemplate(cut);
+          const template = FISH.find((f) => f.id === matched.fish.id);
+          const x = 180 + (i % 3) * 360;
+          const y = 110 + ((i / 3) | 0) * 210;
+          tag(x, y - 100, `${name} -> ${matched.fish.id} (${matched.score.toFixed(2)})`);
+          items.push({
+            x,
+            y,
+            f3d: engine.addFish(
+              { id: name, model3d: template?.model3d || `/models/${name}.glb`, image: cut, templateId: matched.fish.id },
+              x, y, 0.2
+            ),
+          });
+        }
+      } else {
+        const raw = await loadImage(`/fish/${ONLY}.${EXT[ONLY]}`);
+        const cut = cutOutFish(colorize(raw, 0));
+        for (let i = 0; i < 8; i++) {
+          const x = 140 + (i % 4) * 270;
+          const y = 160 + ((i / 4) | 0) * 330;
+          tag(x, y - 140, `phase ${i}`);
+          items.push({
+            x, y, phase: (i * Math.PI) / 4,
+            f3d: engine.addFish(
+              { id: `${ONLY}-${i}`, model3d: `/models/${ONLY}.glb`, image: cut, templateId: ONLY },
+              x, y, 0.2
+            ),
+          });
+        }
+      }
+
+      let t = 0;
+      function frame() {
+        t += 0.05;
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = "#0e2b3d";
+        ctx.fillRect(0, 0, W, H);
+        items.forEach((it) => engine.updateFish(it.f3d, it.x, it.y, HEADING, it.phase ?? t, 0.05));
+        engine.render(ctx);
+        if (items.every((it) => it.f3d?.loaded)) document.title = "READY";
+        requestAnimationFrame(frame);
+      }
+      frame();
+    </script>
+  </body>
+</html>
