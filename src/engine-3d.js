@@ -18,7 +18,7 @@ function inkAt(data, w, x, y) {
   const min = Math.min(data[i], data[i + 1], data[i + 2]);
   const luma = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
   const sat = max === 0 ? 0 : (max - min) / max;
-  if (luma > 246 && sat < 0.06) return false;
+  if (luma > 238 && sat < 0.1) return false;
   return true;
 }
 
@@ -39,16 +39,28 @@ function boostDrawing(img) {
   let maxY = 0;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      if (!inkAt(data, w, x, y)) continue;
+      const i = (y * w + x) * 4;
+      const max = Math.max(data[i], data[i + 1], data[i + 2]);
+      const min = Math.min(data[i], data[i + 1], data[i + 2]);
+      const luma = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+      const sat = max === 0 ? 0 : (max - min) / max;
+      // Paper stays see-through so the 3D clay around the drawing does not
+      // show up as a white body with a stamp on it.
+      if (data[i + 3] < 28 || (luma > 238 && sat < 0.1)) {
+        data[i + 3] = 0;
+        continue;
+      }
+      data[i + 3] = 255;
       if (x < minX) minX = x;
       if (y < minY) minY = y;
       if (x > maxX) maxX = x;
       if (y > maxY) maxY = y;
     }
   }
+  sctx.putImageData(shot, 0, 0);
   if (maxX <= minX || maxY <= minY) return src;
 
-  const pad = Math.round(Math.max(3, (maxX - minX) * 0.04));
+  const pad = Math.round(Math.max(2, (maxX - minX) * 0.02));
   const sx = Math.max(0, minX - pad);
   const sy = Math.max(0, minY - pad);
   const sw = Math.min(w - sx, maxX - minX + pad * 2);
@@ -143,8 +155,13 @@ function paintDrawingOnFish(aligned, drawingUrl, templateHeadOnRight) {
       aligned.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(aligned);
       const size = box.getSize(new THREE.Vector3());
-      const spanX = Math.max(size.x, 1e-5);
-      const spanY = Math.max(size.y, 1e-5);
+      // After +90° Y the body is X and the back is Y. Pick those two so a
+      // side-view drawing covers the flank, not a thin cross-section.
+      const along = size.x >= size.z ? "x" : "z";
+      const spanAlong = Math.max(size[along], 1e-5);
+      const spanUp = Math.max(size.y, 1e-5);
+      const minAlong = box.min[along];
+      const minUp = box.min.y;
 
       const v = new THREE.Vector3();
       aligned.traverse((child) => {
@@ -153,7 +170,8 @@ function paintDrawingOnFish(aligned, drawingUrl, templateHeadOnRight) {
           map: tex,
           color: 0xffffff,
           side: THREE.DoubleSide,
-          transparent: false,
+          transparent: true,
+          alphaTest: 0.08,
           depthWrite: true,
         });
         const geo = child.geometry;
@@ -164,12 +182,10 @@ function paintDrawingOnFish(aligned, drawingUrl, templateHeadOnRight) {
         const uv = new Float32Array(pos.count * 2);
         for (let i = 0; i < pos.count; i++) {
           v.fromBufferAttribute(pos, i).applyMatrix4(child.matrixWorld);
-          // +X is the snout, which is the right of the image only if that is
-          // the way the fish was drawn.
-          let u = (v.x - box.min.x) / spanX;
+          let u = (v[along] - minAlong) / spanAlong;
           if (!headOnRight) u = 1 - u;
           uv[i * 2] = Math.min(1, Math.max(0, u));
-          uv[i * 2 + 1] = Math.min(1, Math.max(0, (v.y - box.min.y) / spanY));
+          uv[i * 2 + 1] = Math.min(1, Math.max(0, (v.y - minUp) / spanUp));
         }
         geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
       });

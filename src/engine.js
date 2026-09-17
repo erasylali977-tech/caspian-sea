@@ -87,13 +87,13 @@ class Splash {
 }
 
 const GAIT = {
-  fish: { cruise: 0.048, turn: 0.0034, tail: 1.0, depth: [0.2, 0.75], vertical: 0.32, boost: 0.0008, boostMul: 1.9, path: "mixed", avoid: 85 },
-  puffer: { cruise: 0.042, turn: 0.0028, tail: 0.45, depth: [0.3, 0.68], vertical: 0.28, boost: 0.0005, boostMul: 1.6, path: "wander", avoid: 80 },
+  fish: { cruise: 0.048, turn: 0.0026, tail: 1.0, depth: [0.18, 0.78], vertical: 0.7, boost: 0.0008, boostMul: 1.9, path: "mixed", avoid: 85 },
+  puffer: { cruise: 0.042, turn: 0.0024, tail: 0.45, depth: [0.28, 0.7], vertical: 0.62, boost: 0.0005, boostMul: 1.6, path: "wander", avoid: 80 },
   octopus: { cruise: 0.032, turn: 0.0022, tail: 0.6, depth: [0.52, 0.88], vertical: 0.8, boost: 0, boostMul: 1, path: "jet", avoid: 75 },
 };
 
-const MAX_PITCH_UP = 0.72;
-const MAX_PITCH_DOWN = 0.36;
+const MAX_PITCH_UP = 0.46;
+const MAX_PITCH_DOWN = 0.34;
 
 function clampPitch(p) {
   if (p < 0) return Math.max(-MAX_PITCH_UP, p);
@@ -109,8 +109,8 @@ function wrapAngle(a) {
 function pickPath(kindPath) {
   if (kindPath && kindPath !== "mixed") return kindPath;
   const r = Math.random();
-  if (r < 0.82) return "wander";
-  if (r < 0.94) return "weave";
+  if (r < 0.55) return "wander";
+  if (r < 0.88) return "weave";
   return "loop";
 }
 
@@ -171,7 +171,7 @@ class Fish {
       cx: tank.w * (0.32 + Math.random() * 0.36),
       cy: tank.h * (this.gait.depth[0] + Math.random() * 0.28),
       rx: tank.w * (0.18 + Math.random() * 0.18),
-      ry: tank.h * (0.018 + Math.random() * 0.03) * (this.kind === "dolphin" ? 1.6 : 1),
+      ry: tank.h * (0.055 + Math.random() * 0.08) * (this.kind === "dolphin" ? 1.6 : 1),
       w: (0.00018 + Math.random() * 0.00016) * (Math.random() < 0.5 ? -1 : 1),
       a: Math.random() * Math.PI * 2,
     };
@@ -196,7 +196,7 @@ class Fish {
     const ahead = 140 + Math.random() * Math.max(80, span * 0.45);
     const side = this.facing < 0 ? -1 : 1;
     this.wx = Math.max(padX, Math.min(this.tank.w - padX, this.x + side * ahead * (Math.random() < 0.22 ? -1 : 1)));
-    this.wy = this.y + (Math.random() - 0.48) * this.tank.h * 0.14;
+    this.wy = this.y + (Math.random() - 0.5) * this.tank.h * 0.36;
     this.wy = Math.max(this.tank.h * d0, Math.min(this.tank.h * d1, this.wy));
     if (reset) {
       this.wx = padX + Math.random() * span;
@@ -282,8 +282,8 @@ class Fish {
     this.swimYaw = Math.max(0, Math.min(Math.PI, this.swimYaw + Math.max(-maxTurn, Math.min(maxTurn, yawDelta))));
 
     const turning = Math.min(1, Math.abs(yawDelta) / 1.1);
-    const wantPitch = clampPitch(Math.atan2(dy, Math.max(Math.abs(dx), 48)));
-    this.pitch += (wantPitch * (1 - turning * 0.7) - this.pitch) * Math.min(1, 0.09 * dt / 16);
+    const wantPitch = clampPitch(Math.atan2(dy, Math.max(Math.abs(dx), 70)));
+    this.pitch += (wantPitch * (1 - turning * 0.28) - this.pitch) * Math.min(1, 0.04 * dt / 16);
 
     let target = this.gait.cruise * (0.62 + (1 - turning) * 0.5);
     if (this.boost > 0) {
