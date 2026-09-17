@@ -11,13 +11,28 @@ const FISH_LENGTH = 1.15;
 const QUARTER_TURN = 0.28;
 const POSE_TAU = 0.22;
 
-function isPaper(data, i) {
-  if (data[i + 3] < 28) return true;
+function pixelStats(data, i) {
   const max = Math.max(data[i], data[i + 1], data[i + 2]);
   const min = Math.min(data[i], data[i + 1], data[i + 2]);
   const luma = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
   const sat = max === 0 ? 0 : (max - min) / max;
-  return luma > 208 && sat < 0.16;
+  return { luma, sat, a: data[i + 3] };
+}
+
+function isCrayon(data, i) {
+  const { luma, sat, a } = pixelStats(data, i);
+  return a >= 28 && sat > 0.16 && luma > 22 && luma < 248;
+}
+
+function isInk(data, i) {
+  const { luma, sat, a } = pixelStats(data, i);
+  if (a < 28) return false;
+  if (luma < 132) return true;
+  return sat > 0.14 && luma < 248;
+}
+
+function isPaper(data, i) {
+  return !isInk(data, i);
 }
 
 // JPEG cutouts keep a white rectangle around an oval fish. Those corners
@@ -85,42 +100,57 @@ function floodPaintIntoPaper(data, w, h) {
   }
 }
 
-function boostDrawing(img) {
-  const src = document.createElement("canvas");
-  src.width = Math.max(2, img.width);
-  src.height = Math.max(2, img.height);
-  const sctx = src.getContext("2d", { willReadFrequently: true });
-  sctx.filter = "saturate(1.55) contrast(1.12) brightness(1.04)";
-  sctx.drawImage(img, 0, 0);
-  sctx.filter = "none";
-  const shot = sctx.getImageData(0, 0, src.width, src.height);
-  const { data, width: w, height: h } = shot;
-
+function boundsWhere(data, w, h, test) {
   let minX = w;
   let minY = h;
   let maxX = 0;
   let maxY = 0;
+  let n = 0;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4;
-      if (isPaper(data, i)) continue;
-      data[i + 3] = 255;
+      if (!test(data, i)) continue;
+      n += 1;
       if (x < minX) minX = x;
       if (y < minY) minY = y;
       if (x > maxX) maxX = x;
       if (y > maxY) maxY = y;
     }
   }
-  if (maxX <= minX || maxY <= minY) {
+  return n ? { minX, minY, maxX, maxY, n } : null;
+}
+
+function boostDrawing(img) {
+  const src = document.createElement("canvas");
+  src.width = Math.max(2, img.width);
+  src.height = Math.max(2, img.height);
+  const sctx = src.getContext("2d", { willReadFrequently: true });
+  sctx.filter = "saturate(1.6) contrast(1.12) brightness(1.03)";
+  sctx.drawImage(img, 0, 0);
+  sctx.filter = "none";
+  const shot = sctx.getImageData(0, 0, src.width, src.height);
+  const { data, width: w, height: h } = shot;
+
+  // Prefer the crayon itself. Grey JPEG paper used to count as "ink", so the
+  // crop stayed page-sized and only the nosy fish (tight PNG) filled the mesh.
+  const crayon = boundsWhere(data, w, h, isCrayon);
+  const ink = boundsWhere(data, w, h, isInk);
+  const box =
+    crayon && crayon.n > w * h * 0.012
+      ? crayon
+      : ink;
+  if (!box) {
     floodPaintIntoPaper(data, w, h);
     sctx.putImageData(shot, 0, 0);
     return src;
   }
 
-  const sx = minX;
-  const sy = minY;
-  const sw = maxX - minX + 1;
-  const sh = maxY - minY + 1;
+  const padX = Math.round(Math.max(1, (box.maxX - box.minX) * 0.04));
+  const padY = Math.round(Math.max(1, (box.maxY - box.minY) * 0.04));
+  const sx = Math.max(0, box.minX - padX);
+  const sy = Math.max(0, box.minY - padY);
+  const sw = Math.min(w - sx, box.maxX - box.minX + 1 + padX * 2);
+  const sh = Math.min(h - sy, box.maxY - box.minY + 1 + padY * 2);
   const cropped = sctx.getImageData(sx, sy, sw, sh);
   floodPaintIntoPaper(cropped.data, sw, sh);
   const c = document.createElement("canvas");
@@ -216,13 +246,13 @@ function paintDrawingOnFish(aligned, drawingUrl, templateHeadOnRight) {
       aligned.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(aligned);
       const size = box.getSize(new THREE.Vector3());
-      // After +90° Y the body is X and the back is Y. Pick those two so a
-      // side-view drawing covers the flank, not a thin cross-section.
-      const along = size.x >= size.z ? "x" : "z";
-      const spanAlong = Math.max(size[along], 1e-5);
+      // After +90° Y the body is always X, the back is Y. Do not switch to Z
+      // on a thick fish — that mapped a sliver of the drawing onto the flank.
+      const spanAlong = Math.max(size.x, 1e-5);
       const spanUp = Math.max(size.y, 1e-5);
-      const minAlong = box.min[along];
+      const minAlong = box.min.x;
       const minUp = box.min.y;
+      const zoom = 1.08;
 
       const v = new THREE.Vector3();
       aligned.traverse((child) => {
@@ -242,10 +272,13 @@ function paintDrawingOnFish(aligned, drawingUrl, templateHeadOnRight) {
         const uv = new Float32Array(pos.count * 2);
         for (let i = 0; i < pos.count; i++) {
           v.fromBufferAttribute(pos, i).applyMatrix4(child.matrixWorld);
-          let u = (v[along] - minAlong) / spanAlong;
+          let u = (v.x - minAlong) / spanAlong;
           if (!headOnRight) u = 1 - u;
+          let vv = (v.y - minUp) / spanUp;
+          u = 0.5 + (u - 0.5) / zoom;
+          vv = 0.5 + (vv - 0.5) / zoom;
           uv[i * 2] = Math.min(1, Math.max(0, u));
-          uv[i * 2 + 1] = Math.min(1, Math.max(0, (v.y - minUp) / spanUp));
+          uv[i * 2 + 1] = Math.min(1, Math.max(0, vv));
         }
         geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
       });
