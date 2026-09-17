@@ -55,22 +55,34 @@ function boot(roomCode) {
     success.classList.remove("show");
     try {
       const sourceImage = await loadImageFromFile(file);
-      const cutout = cutOutFish(sourceImage);
+      let cutout;
+      try {
+        cutout = cutOutFish(sourceImage);
+      } catch {
+        cutout = "";
+      }
       const picked = fishById(chosenId);
       if (!picked?.model3d) {
         alert(t(lang, "joinPickNeed"));
         return;
       }
-      const image = await compressFishDataUrl(cutout, 420);
+      const image = await compressFishDataUrl(cutout || sourceImage.src, 420);
+      if (!image || image.length < 32) throw new Error("empty");
       const fish = {
-        id: crypto.randomUUID(),
+        id: crypto.randomUUID ? crypto.randomUUID() : `f${Date.now()}`,
         kind: picked.kind || "fish",
         templateId: picked.id,
         image,
         model3d: picked.model3d,
       };
       const payload = { type: "addFish", fish };
-      if (room) room.send(payload);
+      if (room) {
+        try {
+          room.send(payload);
+        } catch (err) {
+          console.error(err);
+        }
+      }
       success.classList.add("show");
     } catch (err) {
       console.error(err);

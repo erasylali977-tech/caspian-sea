@@ -22,23 +22,68 @@ function sat(p) {
   return max === 0 ? 0 : (max - min) / max;
 }
 
-export function compressFishDataUrl(dataUrl, maxSize = 480) {
+const MAX_READ = 1600;
+
+function canvasFromSource(src, maxEdge = MAX_READ) {
+  const sw = Math.max(1, src.width || src.naturalWidth || 1);
+  const sh = Math.max(1, src.height || src.naturalHeight || 1);
+  const scale = Math.min(1, maxEdge / Math.max(sw, sh));
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(sw * scale));
+  c.height = Math.max(1, Math.round(sh * scale));
+  const ctx = c.getContext("2d");
+  if (!ctx) throw new Error("canvas");
+  ctx.drawImage(src, 0, 0, c.width, c.height);
+  return c;
+}
+
+function imageFromCanvas(canvas) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = canvas.toDataURL("image/jpeg", 0.88);
+  });
+}
+
+function safeJpeg(source, maxEdge = 900) {
+  try {
+    const c = canvasFromSource(source, maxEdge);
+    const ctx = c.getContext("2d");
+    if (ctx) {
+      ctx.fillStyle = "#fff";
+      ctx.globalCompositeOperation = "destination-over";
+      ctx.fillRect(0, 0, c.width, c.height);
+    }
+    return c.toDataURL("image/jpeg", 0.84);
+  } catch {
+    return "";
+  }
+}
+
+export function compressFishDataUrl(dataUrl, maxSize = 420) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
-      const w = Math.max(1, Math.round(img.width * scale));
-      const h = Math.max(1, Math.round(img.height * scale));
-      const c = document.createElement("canvas");
-      c.width = w;
-      c.height = h;
-      const ctx = c.getContext("2d");
-      ctx.filter = "saturate(1.35) contrast(1.08) brightness(1.04)";
-      ctx.drawImage(img, 0, 0, w, h);
-      ctx.filter = "none";
-      // Keep PNG so the transparent paper stays transparent. JPEG fills the
-      // page with white and the drawing shrinks to a stamp on the 3D model.
-      resolve(c.toDataURL("image/png"));
+      try {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height, 1));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext("2d");
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, w, h);
+        ctx.filter = "saturate(1.35) contrast(1.08) brightness(1.04)";
+        ctx.drawImage(img, 0, 0, w, h);
+        ctx.filter = "none";
+        let out = c.toDataURL("image/jpeg", 0.84);
+        if (out.length > 220000) out = c.toDataURL("image/jpeg", 0.7);
+        resolve(out);
+      } catch {
+        resolve(dataUrl);
+      }
     };
     img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;
@@ -47,16 +92,28 @@ export function compressFishDataUrl(dataUrl, maxSize = 480) {
 
 export function cutOutFish(source, tolerance = 42) {
   const maxW = 1100;
-  const scale = Math.min(1, maxW / source.width);
-  const w = Math.max(2, Math.round(source.width * scale));
-  const h = Math.max(2, Math.round(source.height * scale));
+  const sw = source.width || source.naturalWidth || 0;
+  const sh = source.height || source.naturalHeight || 0;
+  if (!sw || !sh) return safeJpeg(source);
+
+  const scale = Math.min(1, maxW / sw);
+  const w = Math.max(2, Math.round(sw * scale));
+  const h = Math.max(2, Math.round(sh * scale));
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return safeJpeg(source);
   ctx.drawImage(source, 0, 0, w, h);
-  const img = ctx.getImageData(0, 0, w, h);
+
+  let img;
+  try {
+    img = ctx.getImageData(0, 0, w, h);
+  } catch {
+    return canvas.toDataURL("image/jpeg", 0.84);
+  }
   const data = img.data;
+  try {
 
   const samples = [];
   const inset = Math.max(2, Math.floor(Math.min(w, h) * 0.02));
@@ -163,7 +220,11 @@ export function cutOutFish(source, tolerance = 42) {
     }
   }
 
-  dropSmallBlobs(img, "alpha");
+  try {
+    dropSmallBlobs(img, "alpha");
+  } catch {
+    /* keep the mask we already have */
+  }
   minX = w;
   minY = h;
   maxX = 0;
@@ -181,48 +242,63 @@ export function cutOutFish(source, tolerance = 42) {
 
   ctx.putImageData(img, 0, 0);
   if (maxX <= minX || maxY <= minY) {
-    return canvas.toDataURL("image/png");
+    return safeJpeg(canvas);
   }
 
   const pad = Math.round(Math.max(8, (maxX - minX) * 0.06));
   const sx = Math.max(0, minX - pad);
   const sy = Math.max(0, minY - pad);
-  const sw = Math.min(w - sx, maxX - minX + pad * 2);
-  const sh = Math.min(h - sy, maxY - minY + pad * 2);
+  const cropW = Math.min(w - sx, maxX - minX + pad * 2);
+  const cropH = Math.min(h - sy, maxY - minY + pad * 2);
   const out = document.createElement("canvas");
-  out.width = sw;
-  out.height = sh;
-  out.getContext("2d").drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
-  return out.toDataURL("image/png");
+  out.width = cropW;
+  out.height = cropH;
+  const octx = out.getContext("2d");
+  if (!octx) return safeJpeg(canvas);
+  octx.fillStyle = "#fff";
+  octx.fillRect(0, 0, cropW, cropH);
+  octx.drawImage(canvas, sx, sy, cropW, cropH, 0, 0, cropW, cropH);
+  return out.toDataURL("image/jpeg", 0.86);
+  } catch {
+    return safeJpeg(canvas) || safeJpeg(source);
+  }
 }
 
 export async function loadImageFromFile(file) {
+  if (!file) throw new Error("nofile");
+
   if (typeof createImageBitmap === "function") {
+    let bmp = null;
     try {
-      const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
-      const c = document.createElement("canvas");
-      c.width = bmp.width;
-      c.height = bmp.height;
-      c.getContext("2d").drawImage(bmp, 0, 0);
-      bmp.close?.();
-      return await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = reject;
-        img.src = c.toDataURL("image/jpeg", 0.92);
-      });
+      bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
     } catch {
-      /* fall through */
+      try {
+        bmp = await createImageBitmap(file);
+      } catch {
+        bmp = null;
+      }
+    }
+    if (bmp) {
+      try {
+        const c = canvasFromSource(bmp);
+        bmp.close?.();
+        return await imageFromCanvas(c);
+      } catch {
+        bmp.close?.();
+      }
     }
   }
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(img);
-    };
-    img.onerror = reject;
-    img.src = url;
-  });
+
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = url;
+    });
+    return await imageFromCanvas(canvasFromSource(img));
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }

@@ -189,7 +189,13 @@ export function openRoom(code, { role }) {
       return () => listeners.delete(fn);
     },
     send(msg) {
-      if (msg?.type === "addFish" && msg.fish) lsPush(room, msg.fish);
+      if (msg?.type === "addFish" && msg.fish) {
+        try {
+          lsPush(room, msg.fish);
+        } catch {
+          /* iPhone localStorage quota — still send over the relay */
+        }
+      }
       if (msg?.type === "clear") lsClear(room);
       try {
         bc?.postMessage(msg);
