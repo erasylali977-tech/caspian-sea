@@ -36,12 +36,9 @@ export function compressFishDataUrl(dataUrl, maxSize = 480) {
       ctx.filter = "saturate(1.35) contrast(1.08) brightness(1.04)";
       ctx.drawImage(img, 0, 0, w, h);
       ctx.filter = "none";
-      const tryPng = () => c.toDataURL("image/png");
-      let out = tryPng();
-      if (out.length > 220000) {
-        out = c.toDataURL("image/jpeg", 0.86);
-      }
-      resolve(out);
+      // Keep PNG so the transparent paper stays transparent. JPEG fills the
+      // page with white and the drawing shrinks to a stamp on the 3D model.
+      resolve(c.toDataURL("image/png"));
     };
     img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;

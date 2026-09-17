@@ -62,51 +62,35 @@ export function prepareSwimMesh(mesh, axes) {
 export function deformSwim(part, phase, effort = 1) {
   const { geometry, orig, body, lat, up, upSign, min, span, halfLat, halfUp, tailAtMax } = part;
   const arr = geometry.attributes.position.array;
-  const amp = 0.09 * Math.min(1.3, 0.55 + effort * 8);
-  const finAmp = 0.085 * Math.min(1.2, 0.55 + effort * 6);
+  const drive = 0.45 + Math.min(1, Math.max(0.2, effort)) * 0.55;
+  const amp = 0.032 * drive;
+  const finAmp = 0.028 * drive;
 
   for (let i = 0; i < orig.length; i += 3) {
     // 0 at the snout, 1 at the tip of the tail.
     let t = (orig[i + body] - min) / span;
     if (!tailAtMax) t = 1 - t;
+    const tail = t * t * t;
 
-    // The stroke travels down the body and gets bigger as it goes, so the
-    // head barely moves and the tail does the work.
-    const wave = Math.sin(phase * 2.15 - t * Math.PI * 1.35) * amp * t * t;
-    const bodyWave = Math.sin(phase * 1.05 - t * 2.1) * amp * 0.2 * (1 - Math.abs(t - 0.45));
-
+    const wave = Math.sin(phase * 1.15 - t * 2.4) * amp * tail;
     const upNorm = (orig[i + up] * upSign) / halfUp;
     const side = orig[i + lat] / halfLat;
 
-    // Dorsal / anal: the outer third of the height. Sweep the trailing edge
-    // along the body so the flap reads in a side view, not only into the camera.
-    const keel = Math.max(0, Math.abs(upNorm) - 0.18);
-    const alongFin = t > 0.16 && t < 0.82 ? 1 : t > 0.82 ? 0.25 : 0.12;
-    const dorsal = keel * alongFin;
-    const finBeat = Math.sin(phase * 3.4 + t * 3.6);
-    const finLat = finBeat * finAmp * dorsal;
-    const finSweep = Math.sin(phase * 3.4 + t * 3.6 + 0.7) * finAmp * 1.35 * dorsal;
-
-    // Caudal: fan the tail open and shut in the profile plane.
-    const tail = Math.max(0, t - 0.58) / 0.42;
-    const caudalFan = Math.sin(phase * 2.15 - 1.15) * amp * 0.85 * tail * tail * upNorm;
-    const caudalLat = wave * tail * 0.45;
-
-    // Pectorals sit on the flanks near the head and row.
-    const pectoral = Math.max(0, Math.abs(side) - 0.28) * (t > 0.08 && t < 0.52 ? 1 : 0);
-    const pecBeat = Math.sin(phase * 4.2 + t * 2);
-    const pecUp = pecBeat * finAmp * 1.25 * pectoral * Math.sign(side || 1) * upSign;
-    const pecRow = Math.sin(phase * 4.2 + 0.9) * finAmp * 1.15 * pectoral;
+    const keel = Math.max(0, Math.abs(upNorm) - 0.28);
+    const dorsal = keel * (t > 0.22 && t < 0.85 ? 1 : 0.15);
+    const finLat = Math.sin(phase * 1.7 + t * 2.2) * finAmp * dorsal;
+    const caudalFan = Math.sin(phase * 1.15 - 0.8) * amp * 0.55 * Math.max(0, t - 0.62) * upNorm;
+    const pectoral = Math.max(0, Math.abs(side) - 0.38) * (t > 0.12 && t < 0.48 ? 1 : 0);
+    const pecUp = Math.sin(phase * 1.9) * finAmp * 0.55 * pectoral * Math.sign(side || 1) * upSign;
 
     arr[i] = orig[i];
     arr[i + 1] = orig[i + 1];
     arr[i + 2] = orig[i + 2];
-    arr[i + lat] = orig[i + lat] + wave + bodyWave + finLat * Math.sign(upNorm || 1) + caudalLat;
+    arr[i + lat] = orig[i + lat] + wave + finLat * Math.sign(upNorm || 1);
     arr[i + up] = orig[i + up] + caudalFan + pecUp;
-    arr[i + body] = orig[i + body] + finSweep * Math.sign(upNorm || 1) * 0.55 + pecRow * Math.sign(side || 1);
   }
 
   geometry.attributes.position.needsUpdate = true;
-  part.tick = (part.tick + 1) % 3;
+  part.tick = (part.tick + 1) % 12;
   if (part.tick === 0) geometry.computeVertexNormals();
 }

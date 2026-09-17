@@ -8,17 +8,81 @@ const FISH_LENGTH = 1.15;
 
 // How square-on the fish sits to the camera. A pure side view hides the tail
 // beat completely, because the tail sweeps straight into the screen.
-const QUARTER_TURN = 0.28;
-const POSE_TAU = 0.16;
+const QUARTER_TURN = 0.22;
+const POSE_TAU = 0.38;
+
+function inkAt(data, w, x, y) {
+  const i = (y * w + x) * 4;
+  const a = data[i + 3];
+  if (a < 28) return false;
+  const max = Math.max(data[i], data[i + 1], data[i + 2]);
+  const min = Math.min(data[i], data[i + 1], data[i + 2]);
+  const luma = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+  const sat = max === 0 ? 0 : (max - min) / max;
+  if (luma > 242 && sat < 0.08) return false;
+  return true;
+}
 
 function boostDrawing(img) {
+  const src = document.createElement("canvas");
+  src.width = Math.max(2, img.width);
+  src.height = Math.max(2, img.height);
+  const sctx = src.getContext("2d", { willReadFrequently: true });
+  sctx.filter = "saturate(1.45) contrast(1.12) brightness(1.06)";
+  sctx.drawImage(img, 0, 0);
+  sctx.filter = "none";
+  const shot = sctx.getImageData(0, 0, src.width, src.height);
+  const { data, width: w, height: h } = shot;
+
+  let minX = w;
+  let minY = h;
+  let maxX = 0;
+  let maxY = 0;
+  let sr = 0;
+  let sg = 0;
+  let sb = 0;
+  let sn = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!inkAt(data, w, x, y)) continue;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      const i = (y * w + x) * 4;
+      sr += data[i];
+      sg += data[i + 1];
+      sb += data[i + 2];
+      sn += 1;
+    }
+  }
+  if (maxX <= minX || maxY <= minY) return src;
+
+  const pad = Math.round(Math.max(2, (maxX - minX) * 0.03));
+  const sx = Math.max(0, minX - pad);
+  const sy = Math.max(0, minY - pad);
+  const sw = Math.min(w - sx, maxX - minX + pad * 2);
+  const sh = Math.min(h - sy, maxY - minY + pad * 2);
+  const cropped = sctx.getImageData(sx, sy, sw, sh);
+  const cd = cropped.data;
+  const fillR = sn ? Math.round(sr / sn) : 220;
+  const fillG = sn ? Math.round(sg / sn) : 220;
+  const fillB = sn ? Math.round(sb / sn) : 220;
+  for (let i = 0; i < cd.length; i += 4) {
+    if (cd[i + 3] >= 28) {
+      cd[i + 3] = 255;
+      continue;
+    }
+    cd[i] = fillR;
+    cd[i + 1] = fillG;
+    cd[i + 2] = fillB;
+    cd[i + 3] = 255;
+  }
+
   const c = document.createElement("canvas");
-  c.width = Math.max(2, img.width);
-  c.height = Math.max(2, img.height);
-  const ctx = c.getContext("2d");
-  ctx.filter = "saturate(1.45) contrast(1.12) brightness(1.06)";
-  ctx.drawImage(img, 0, 0);
-  ctx.filter = "none";
+  c.width = sw;
+  c.height = sh;
+  c.getContext("2d").putImageData(cropped, 0, 0);
   return c;
 }
 
@@ -87,6 +151,8 @@ function paintDrawingOnFish(aligned, drawingUrl, templateHeadOnRight) {
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.flipY = true;
       tex.anisotropy = 4;
+      tex.wrapS = THREE.ClampToEdgeWrapping;
+      tex.wrapT = THREE.ClampToEdgeWrapping;
       tex.needsUpdate = true;
 
       // Which end of the drawing is the head? The template it was matched
@@ -113,8 +179,7 @@ function paintDrawingOnFish(aligned, drawingUrl, templateHeadOnRight) {
           map: tex,
           color: 0xffffff,
           side: THREE.DoubleSide,
-          transparent: true,
-          alphaTest: 0.12,
+          transparent: false,
           depthWrite: true,
         });
         const geo = child.geometry;
@@ -319,15 +384,15 @@ export class ThreeEngine {
 
     const turn = fish3D.lastYaw == null ? 0 : wrapAngle(yaw - fish3D.lastYaw);
     fish3D.lastYaw = yaw;
-    const lean = Math.max(-0.35, Math.min(0.35, turn * 18));
-    fish3D.bank += (lean - fish3D.bank) * 0.08;
+    const lean = Math.max(-0.18, Math.min(0.18, turn * 8));
+    fish3D.bank += (lean - fish3D.bank) * 0.04;
 
     root.rotation.y = fish3D.yaw;
-    root.rotation.z = fish3D.pitch + Math.sin(phase * 0.7) * 0.02;
-    root.rotation.x = fish3D.bank + Math.sin(phase * 0.45) * 0.03;
+    root.rotation.z = fish3D.pitch + Math.sin(phase * 0.35) * 0.012;
+    root.rotation.x = fish3D.bank + Math.sin(phase * 0.22) * 0.01;
 
     fish3D.phase = phase;
-    const effort = Math.max(0.35, Math.min(1.4, speed * 14));
+    const effort = Math.max(0.25, Math.min(0.85, speed * 8));
     for (const part of fish3D.swim) deformSwim(part, phase, effort);
   }
 
