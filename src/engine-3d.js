@@ -8,18 +8,17 @@ const FISH_LENGTH = 1.15;
 
 // How square-on the fish sits to the camera. A pure side view hides the tail
 // beat completely, because the tail sweeps straight into the screen.
-const QUARTER_TURN = 0.22;
-const POSE_TAU = 0.38;
+const QUARTER_TURN = 0.28;
+const POSE_TAU = 0.22;
 
 function inkAt(data, w, x, y) {
   const i = (y * w + x) * 4;
-  const a = data[i + 3];
-  if (a < 28) return false;
+  if (data[i + 3] < 28) return false;
   const max = Math.max(data[i], data[i + 1], data[i + 2]);
   const min = Math.min(data[i], data[i + 1], data[i + 2]);
   const luma = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
   const sat = max === 0 ? 0 : (max - min) / max;
-  if (luma > 242 && sat < 0.08) return false;
+  if (luma > 246 && sat < 0.06) return false;
   return true;
 }
 
@@ -28,7 +27,7 @@ function boostDrawing(img) {
   src.width = Math.max(2, img.width);
   src.height = Math.max(2, img.height);
   const sctx = src.getContext("2d", { willReadFrequently: true });
-  sctx.filter = "saturate(1.45) contrast(1.12) brightness(1.06)";
+  sctx.filter = "saturate(1.5) contrast(1.1) brightness(1.05)";
   sctx.drawImage(img, 0, 0);
   sctx.filter = "none";
   const shot = sctx.getImageData(0, 0, src.width, src.height);
@@ -38,10 +37,6 @@ function boostDrawing(img) {
   let minY = h;
   let maxX = 0;
   let maxY = 0;
-  let sr = 0;
-  let sg = 0;
-  let sb = 0;
-  let sn = 0;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       if (!inkAt(data, w, x, y)) continue;
@@ -49,40 +44,19 @@ function boostDrawing(img) {
       if (y < minY) minY = y;
       if (x > maxX) maxX = x;
       if (y > maxY) maxY = y;
-      const i = (y * w + x) * 4;
-      sr += data[i];
-      sg += data[i + 1];
-      sb += data[i + 2];
-      sn += 1;
     }
   }
   if (maxX <= minX || maxY <= minY) return src;
 
-  const pad = Math.round(Math.max(2, (maxX - minX) * 0.03));
+  const pad = Math.round(Math.max(3, (maxX - minX) * 0.04));
   const sx = Math.max(0, minX - pad);
   const sy = Math.max(0, minY - pad);
   const sw = Math.min(w - sx, maxX - minX + pad * 2);
   const sh = Math.min(h - sy, maxY - minY + pad * 2);
-  const cropped = sctx.getImageData(sx, sy, sw, sh);
-  const cd = cropped.data;
-  const fillR = sn ? Math.round(sr / sn) : 220;
-  const fillG = sn ? Math.round(sg / sn) : 220;
-  const fillB = sn ? Math.round(sb / sn) : 220;
-  for (let i = 0; i < cd.length; i += 4) {
-    if (cd[i + 3] >= 28) {
-      cd[i + 3] = 255;
-      continue;
-    }
-    cd[i] = fillR;
-    cd[i + 1] = fillG;
-    cd[i + 2] = fillB;
-    cd[i + 3] = 255;
-  }
-
   const c = document.createElement("canvas");
   c.width = sw;
   c.height = sh;
-  c.getContext("2d").putImageData(cropped, 0, 0);
+  c.getContext("2d").drawImage(src, sx, sy, sw, sh, 0, 0, sw, sh);
   return c;
 }
 
@@ -317,7 +291,7 @@ export class ThreeEngine {
           const swim = [];
           inner.traverse((child) => {
             if (!child.isMesh) return;
-            const part = prepareSwimMesh(child, meshAxes(child));
+            const part = prepareSwimMesh(child, meshAxes(child), fishData.templateId);
             if (part) swim.push(part);
           });
 
@@ -384,15 +358,15 @@ export class ThreeEngine {
 
     const turn = fish3D.lastYaw == null ? 0 : wrapAngle(yaw - fish3D.lastYaw);
     fish3D.lastYaw = yaw;
-    const lean = Math.max(-0.18, Math.min(0.18, turn * 8));
-    fish3D.bank += (lean - fish3D.bank) * 0.04;
+    const lean = Math.max(-0.28, Math.min(0.28, turn * 12));
+    fish3D.bank += (lean - fish3D.bank) * 0.06;
 
     root.rotation.y = fish3D.yaw;
-    root.rotation.z = fish3D.pitch + Math.sin(phase * 0.35) * 0.012;
-    root.rotation.x = fish3D.bank + Math.sin(phase * 0.22) * 0.01;
+    root.rotation.z = fish3D.pitch + Math.sin(phase * 0.55) * 0.018;
+    root.rotation.x = fish3D.bank + Math.sin(phase * 0.34) * 0.016;
 
     fish3D.phase = phase;
-    const effort = Math.max(0.25, Math.min(0.85, speed * 8));
+    const effort = Math.max(0.45, Math.min(1.15, speed * 11));
     for (const part of fish3D.swim) deformSwim(part, phase, effort);
   }
 

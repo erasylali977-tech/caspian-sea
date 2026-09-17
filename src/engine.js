@@ -333,7 +333,7 @@ class Fish {
 
   step(dt) {
     if (this.gone) return;
-    const effort = 0.0016 + this.speed * 0.028;
+    const effort = 0.0028 + this.speed * 0.05;
     this.phase += effort * dt * this.gait.tail;
     this.breath = 1 + Math.sin(this.phase * (this.front ? 1.3 : 0.55)) * (this.front ? 0.07 : 0.012);
     if (this.caught) {
