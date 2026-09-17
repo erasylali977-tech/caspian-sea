@@ -189,18 +189,6 @@ class Fish {
     return (this.img.height || 160) * this.scale;
   }
 
-  // 3D fish are ~1.15 world units in a 10-tall view, much bigger on screen
-  // than the 2D sprite scale used for cutouts. Avoidance has to use that.
-  footprint() {
-    if (this.is3D) {
-      return {
-        w: Math.max(120, this.tank.h * 0.15),
-        h: Math.max(76, this.tank.h * 0.1),
-      };
-    }
-    return { w: this.width, h: this.height };
-  }
-
   pickWaypoint(reset = false) {
     const padX = Math.max(70, this.width * 0.55);
     const [d0, d1] = this.gait.depth;
@@ -239,38 +227,28 @@ class Fish {
   }
 
   avoid() {
-    let ax = 0;
-    let ay = 0;
+    let dodge = 0;
     let count = 0;
-    let urgent = 0;
-    const me = this.footprint();
-    const pad = this.gait.avoid || 80;
+    const reach = Math.max(90, this.tank.h * 0.09);
 
     for (const other of this.tank.fish) {
       if (other === this || other.gone || other.caught) continue;
       if (!other.ready && !other.is3D) continue;
-      const ot = other.footprint();
-      const minX = (me.w + ot.w) * 0.5 + pad * 0.25;
-      const minY = (me.h + ot.h) * 0.5 + pad * 0.12;
-      let dx = this.x - other.x;
-      let dy = this.y - other.y;
-      if (dx === 0 && dy === 0) {
-        dx = this.id > other.id ? 1 : -1;
-        dy = 1;
-      }
-      const overlapX = minX - Math.abs(dx);
-      const overlapY = minY - Math.abs(dy);
-      if (overlapX <= 0 || overlapY <= 0) continue;
-      const dist = Math.hypot(dx, dy) || 1;
-      const push = Math.max(overlapX / minX, overlapY / minY);
-      ax += (dx / dist) * push;
-      ay += (dy / dist) * push;
+      const dx = other.x - this.x;
+      const dy = other.y - this.y;
+      const ahead = dx * (this.facing || 1);
+      if (ahead < -24) continue;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 1 || dist > reach * 1.6) continue;
+      if (Math.abs(dy) > reach * 0.85) continue;
+      const lane =
+        Math.abs(dy) < 10 ? (String(this.id) > String(other.id) ? 1 : -1) : Math.sign(this.y - other.y) || 1;
+      dodge += lane * (1 - dist / (reach * 1.6));
       count += 1;
-      urgent = Math.max(urgent, push);
     }
 
-    if (!count) return null;
-    return { ax: ax / count, ay: ay / count, urgent };
+    if (!count) return 0;
+    return dodge / count;
   }
 
   steer(dt) {
@@ -280,12 +258,13 @@ class Fish {
     const dist = Math.hypot(dx, dy) || 1;
     if ((this.path === "wander" || this.path === "jet") && dist < 48) this.pickWaypoint();
 
-    const shy = this.avoid();
-    if (shy) {
-      dx += shy.ax * (110 + shy.urgent * 160);
-      dy += shy.ay * (90 + shy.urgent * 130);
-      this.x += shy.ax * shy.urgent * 2.8 * Math.min(dt, 32);
-      this.y += shy.ay * shy.urgent * 2.2 * Math.min(dt, 32);
+    const dodge = this.avoid();
+    if (dodge) {
+      dy += dodge * Math.min(140, this.tank.h * 0.12);
+      this.wy = Math.max(
+        this.tank.h * this.gait.depth[0],
+        Math.min(this.tank.h * this.gait.depth[1], this.wy + dodge * 8)
+      );
     }
 
     const marginX = this.width * 0.45 + 36;

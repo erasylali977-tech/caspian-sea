@@ -11,18 +11,6 @@ const FISH_LENGTH = 1.15;
 const QUARTER_TURN = 0.28;
 const POSE_TAU = 0.22;
 
-// Extra zoom so a side-view drawing covers the fatter 3D body of each Meshy
-// file. Stripe/angel have tall fins; beak is already close to its drawing.
-const COVER_ZOOM = {
-  stripe: 1.22,
-  beak: 1.1,
-  goldfish: 1.16,
-  ornate: 1.18,
-  carp: 1.14,
-  carp2: 1.14,
-  angel: 1.2,
-};
-
 function pixelStats(data, i) {
   const max = Math.max(data[i], data[i + 1], data[i + 2]);
   const min = Math.min(data[i], data[i + 1], data[i + 2]);
@@ -143,17 +131,16 @@ function cropToFish(img) {
   return c;
 }
 
-function coverOntoMesh(src, meshAspect, extraZoom) {
+function coverOntoMesh(src, meshAspect) {
   const W = 512;
   const H = Math.max(2, Math.round(W / Math.max(meshAspect, 0.2)));
   const c = document.createElement("canvas");
   c.width = W;
   c.height = H;
   const ctx = c.getContext("2d", { willReadFrequently: true });
-  const scale = Math.max(W / src.width, H / src.height) * extraZoom;
-  const dw = src.width * scale;
-  const dh = src.height * scale;
-  ctx.drawImage(src, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  // Stretch the whole drawing onto this fish's body. Cover-zoom cropped
+  // snouts and stripes so the colour sat as a lopsided patch.
+  ctx.drawImage(src, 0, 0, W, H);
   const shot = ctx.getImageData(0, 0, W, H);
   floodOutside(shot.data, W, H);
   ctx.putImageData(shot, 0, 0);
@@ -229,8 +216,7 @@ function paintDrawingOnFish(aligned, drawingUrl, templateHeadOnRight, templateId
       const minAlong = box.min.x;
       const minUp = box.min.y;
       const meshAspect = spanAlong / spanUp;
-      const extraZoom = COVER_ZOOM[templateId] || 1.14;
-      const sheet = coverOntoMesh(cropToFish(img), meshAspect, extraZoom);
+      const sheet = coverOntoMesh(cropToFish(img), meshAspect);
 
       const tex = new THREE.CanvasTexture(sheet);
       tex.colorSpace = THREE.SRGBColorSpace;
